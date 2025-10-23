@@ -48,8 +48,8 @@ async def try_match_users(client: Bot, user_id: int, user: dict):
         ], resize_keyboard=True)
         
         # Send to both users
-        await client.send_message(user_id, PARTNER_FOUND_MSG, parse_mode="markdown", reply_markup=chat_keyboard)
-        await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode="markdown", reply_markup=chat_keyboard)
+        await client.send_message(user_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
+        await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
         
         return True
     return False
