@@ -35,16 +35,12 @@ async def try_match_users(client: Bot, user_id: int, user: dict):
         chat_token = await log_chat_start(user_id, partner_id)
         
         # Log to DB channel with token
-        try:
-            await client.send_message(
-                CHANNEL_ID,
-                f"🔐 <b>New Chat Started</b>\n\n"
-                f"<b>Token:</b> <code>{chat_token}</code>\n\n"
-                f"<b>User1:</b> @{user.get('username', 'N/A')} (ID: {user_id}, Gender: {user.get('gender', 'N/A')})\n"
-                f"<b>User2:</b> @{partner.get('username', 'N/A')} (ID: {partner_id}, Gender: {partner.get('gender', 'N/A')})"
-            )
-        except:
-            pass
+        await client.send_to_channel(
+            f"🔐 <b>New Chat Started</b>\n\n"
+            f"<b>Token:</b> <code>{chat_token}</code>\n\n"
+            f"<b>User1:</b> @{user.get('username', 'N/A')} (ID: {user_id}, Gender: {user.get('gender', 'N/A')})\n"
+            f"<b>User2:</b> @{partner.get('username', 'N/A')} (ID: {partner_id}, Gender: {partner.get('gender', 'N/A')})"
+        )
         
         # Notify both users
         chat_keyboard = ReplyKeyboardMarkup([
@@ -116,17 +112,13 @@ async def stop_chat(client: Bot, message: Message):
     await end_chat(user_id, partner_id)
     
     # Log to DB channel
-    try:
-        partner = await get_user(partner_id)
-        await client.send_message(
-            CHANNEL_ID,
-            f"❌ <b>Chat Ended</b>\n\n"
-            f"User 1: {user_id} (@{user.get('username', 'N/A')})\n"
-            f"User 2: {partner_id} (@{partner.get('username', 'N/A')})\n"
-            f"Ended by: {user_id}"
-        )
-    except:
-        pass
+    partner = await get_user(partner_id)
+    await client.send_to_channel(
+        f"❌ <b>Chat Ended</b>\n\n"
+        f"User 1: {user_id} (@{user.get('username', 'N/A')})\n"
+        f"User 2: {partner_id} (@{partner.get('username', 'N/A')})\n"
+        f"Ended by: {user_id}"
+    )
     
     # Clear chat state for both users
     await clear_user_chat_state(user_id)
@@ -159,17 +151,13 @@ async def next_partner(client: Bot, message: Message):
     await end_chat(user_id, partner_id)
     
     # Log to DB channel
-    try:
-        partner = await get_user(partner_id)
-        await client.send_message(
-            CHANNEL_ID,
-            f"⏭ <b>User Skipped to Next</b>\n\n"
-            f"User 1: {user_id} (@{user.get('username', 'N/A')})\n"
-            f"User 2: {partner_id} (@{partner.get('username', 'N/A')})\n"
-            f"Skipped by: {user_id}"
-        )
-    except:
-        pass
+    partner = await get_user(partner_id)
+    await client.send_to_channel(
+        f"⏭ <b>User Skipped to Next</b>\n\n"
+        f"User 1: {user_id} (@{user.get('username', 'N/A')})\n"
+        f"User 2: {partner_id} (@{partner.get('username', 'N/A')})\n"
+        f"Skipped by: {user_id}"
+    )
     
     # Clear partner for both users
     await clear_user_chat_state(user_id)
@@ -251,17 +239,14 @@ async def handle_messages(client: Bot, message: Message):
         
         # Log to DB channel (sample only, not all messages to avoid spam)
         # Only log every 10th message to reduce channel spam
-        try:
-            if random.randint(1, 10) == 1:  # 10% sampling
-                partner = await get_user(partner_id)
-                log_text = f"💬 <b>Message Sample</b>\n\n"
-                log_text += f"From: {user_id} (@{user.get('username', 'N/A')})\n"
-                log_text += f"To: {partner_id} (@{partner.get('username', 'N/A')})\n"
-                log_text += f"Type: {message.media or 'text'}"
-                
-                await client.send_message(CHANNEL_ID, log_text)
-        except:
-            pass
+        if random.randint(1, 10) == 1:  # 10% sampling
+            partner = await get_user(partner_id)
+            log_text = f"💬 <b>Message Sample</b>\n\n"
+            log_text += f"From: {user_id} (@{user.get('username', 'N/A')})\n"
+            log_text += f"To: {partner_id} (@{partner.get('username', 'N/A')})\n"
+            log_text += f"Type: {message.media or 'text'}"
+            
+            await client.send_to_channel(log_text)
             
     except Exception as e:
         # Partner might have blocked the bot or chat ended
