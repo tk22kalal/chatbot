@@ -1,5 +1,5 @@
 #(©)CodeXBotz - Anonymous Chat Handler
-
+from config import ADMINS
 import random
 import time
 from pyrogram import Client, filters
@@ -59,7 +59,7 @@ async def try_match_users(client: Bot, user_id: int, user: dict):
     return False
 
 # Search for partner - /search command or "Find Partner" button
-@Bot.on_message((filters.command('search') | filters.regex('^🔎 Find Partner$')) & filters.private)
+@Bot.on_message((filters.command('search') | filters.regex('^🔎 Find Partner$')) & filters.private & ~filters.user(ADMINS))
 async def search_partner(client: Bot, message: Message):
     user_id = message.from_user.id
     user = await get_user(user_id)
@@ -93,7 +93,7 @@ async def search_partner(client: Bot, message: Message):
         await message.reply_text(SEARCHING_MSG)
 
 # Stop current chat - /stop command
-@Bot.on_message(filters.command('stop') & filters.private)
+@Bot.on_message(filters.command('stop') & filters.private & ~filters.user(ADMINS))
 async def stop_chat(client: Bot, message: Message):
     user_id = message.from_user.id
     user = await get_user(user_id)
@@ -141,7 +141,7 @@ async def stop_chat(client: Bot, message: Message):
     await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_keyboard)
 
 # Next partner - /next command
-@Bot.on_message(filters.command('next') & filters.private)
+@Bot.on_message(filters.command('next') & filters.private & ~filters.user(ADMINS))
 async def next_partner(client: Bot, message: Message):
     user_id = message.from_user.id
     user = await get_user(user_id)
@@ -191,7 +191,7 @@ async def next_partner(client: Bot, message: Message):
         await message.reply_text(SEARCHING_MSG)
 
 # Handle all messages (forward to partner) - ANONYMOUSLY
-@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users']))
+@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users']) & ~filters.user(ADMINS))
 async def handle_messages(client: Bot, message: Message):
     user_id = message.from_user.id
     user = await get_user(user_id)
