@@ -54,7 +54,7 @@ Partner found 😺
 /next — find a new partner
 /stop — stop this chat
 
-https://t.me/ChatbotXY_bot
+`https://t.me/ChatbotXY_bot`
 """
 
 PARTNER_LEFT_MSG = """
