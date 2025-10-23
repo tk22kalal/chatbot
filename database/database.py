@@ -2,6 +2,8 @@
 
 import pymongo
 import os
+import random
+import string
 from config import DB_URI, DB_NAME
 from datetime import datetime
 
@@ -10,6 +12,14 @@ database = dbclient[DB_NAME]
 
 user_data = database['users']
 chat_data = database['chats']
+
+def generate_chat_token():
+    """Generate a unique 8-character token for chat sessions"""
+    while True:
+        token = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        # Check if token already exists
+        if not chat_data.find_one({'token': token}):
+            return token
 
 # User Management
 async def present_user(user_id: int):
@@ -58,15 +68,18 @@ async def clear_user_chat_state(user_id: int):
 
 # Chat History Management
 async def log_chat_start(user1_id: int, user2_id: int):
-    """Log when a chat starts between two users"""
+    """Log when a chat starts between two users and return unique token"""
+    token = generate_chat_token()
+    
     chat_data.insert_one({
+        'token': token,
         'user1_id': user1_id,
         'user2_id': user2_id,
         'start_time': datetime.now(),
         'end_time': None,
         'messages': []
     })
-    return
+    return token
 
 async def log_message(user1_id: int, user2_id: int, sender_id: int, message_text: str):
     """Log a message in the chat history"""
@@ -101,6 +114,11 @@ async def end_chat(user1_id: int, user2_id: int):
         {'$set': {'end_time': datetime.now()}}
     )
     return
+
+# Chat Retrieval
+async def get_chat_by_token(token: str):
+    """Retrieve a chat session by its unique token"""
+    return chat_data.find_one({'token': token})
 
 # Statistics
 async def full_userbase():
