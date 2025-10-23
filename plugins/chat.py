@@ -31,16 +31,17 @@ async def try_match_users(client: Bot, user_id: int, user: dict):
         await set_user_searching(user_id, False)
         await set_user_searching(partner_id, False)
         
-        # Log chat start in database with unique identifier
-        await log_chat_start(user_id, partner_id)
+        # Log chat start in database with unique token
+        chat_token = await log_chat_start(user_id, partner_id)
         
-        # Log to DB channel
+        # Log to DB channel with token
         try:
             await client.send_message(
                 CHANNEL_ID,
-                f"🆕 <b>New Chat Started</b>\n\n"
-                f"User 1: {user_id} (@{user.get('username', 'N/A')}) - {user.get('gender', 'N/A')}\n"
-                f"User 2: {partner_id} (@{partner.get('username', 'N/A')}) - {partner.get('gender', 'N/A')}"
+                f"🔐 <b>New Chat Started</b>\n\n"
+                f"<b>Token:</b> <code>{chat_token}</code>\n\n"
+                f"<b>User1:</b> @{user.get('username', 'N/A')} (ID: {user_id}, Gender: {user.get('gender', 'N/A')})\n"
+                f"<b>User2:</b> @{partner.get('username', 'N/A')} (ID: {partner_id}, Gender: {partner.get('gender', 'N/A')})"
             )
         except:
             pass
