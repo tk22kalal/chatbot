@@ -1,15 +1,4 @@
-#(©)Codexbotz
-#@iryme
+#(©)Codexbotz - Modified for Anonymous Chat Bot
 
-
-
-
-
-from aiohttp import web
-from .route import routes
-
-
-async def web_server():
-    web_app = web.Application(client_max_size=30000000)
-    web_app.add_routes(routes)
-    return web_app
+# This file marks the plugins directory
+# All plugin modules are automatically loaded by Pyrogram
