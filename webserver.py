@@ -94,7 +94,9 @@ async def websocket_handler(request):
                             }
                         }
                         
-                        await broadcast_to_group(group_name, broadcast_data)
+                        # Exclude sender from broadcast since they already have the optimistic message
+                        connection_key = f"{user_id}_{group_name}"
+                        await broadcast_to_group(group_name, broadcast_data, exclude=connection_key)
                 
                 elif action == 'typing':
                     if user_id and group_name:
