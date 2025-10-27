@@ -352,81 +352,81 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Edit Profile button clicked');
             showScreen('profileEdit');
         });
-    
-    document.getElementById('back-btn').addEventListener('click', () => {
-        if (currentGroup) {
-            currentGroup = null;
+        
+        document.getElementById('back-btn').addEventListener('click', () => {
+            if (currentGroup) {
+                currentGroup = null;
+                showScreen('groupSelection');
+            }
+        });
+        
+        document.getElementById('send-btn').addEventListener('click', sendMessage);
+        
+        document.getElementById('message-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        document.getElementById('message-input').addEventListener('input', () => {
+            sendTypingIndicator();
+        });
+        
+        document.getElementById('profile-back-btn').addEventListener('click', () => {
             showScreen('groupSelection');
-        }
-    });
-    
-    document.getElementById('send-btn').addEventListener('click', sendMessage);
-    
-    document.getElementById('message-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    
-    document.getElementById('message-input').addEventListener('input', () => {
-        sendTypingIndicator();
-    });
-    
-    document.getElementById('profile-back-btn').addEventListener('click', () => {
-        showScreen('groupSelection');
-    });
-    
-    document.getElementById('save-profile-btn').addEventListener('click', saveProfile);
-    
-    document.getElementById('change-photo-btn').addEventListener('click', () => {
-        document.getElementById('photo-upload').click();
-    });
-    
-    document.getElementById('photo-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const url = await uploadImage(file);
-            if (url) {
-                userPhoto = url;
-                document.getElementById('edit-photo-preview').src = url;
+        });
+        
+        document.getElementById('save-profile-btn').addEventListener('click', saveProfile);
+        
+        document.getElementById('change-photo-btn').addEventListener('click', () => {
+            document.getElementById('photo-upload').click();
+        });
+        
+        document.getElementById('photo-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = await uploadImage(file);
+                if (url) {
+                    userPhoto = url;
+                    document.getElementById('edit-photo-preview').src = url;
+                }
             }
-        }
-    });
-    
-    document.getElementById('refresh-chat-btn').addEventListener('click', () => {
-        scrollToBottom();
-    });
-    
-    document.getElementById('attach-btn').addEventListener('click', () => {
-        document.getElementById('image-upload').click();
-    });
-    
-    document.getElementById('image-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const optimisticImageMessage = {
-                user_id: userId,
-                user_name: userName,
-                user_photo: userPhoto || '/static/images/default-avatar.svg',
-                image_url: URL.createObjectURL(file),
-                timestamp: new Date().toISOString()
-            };
-            
-            addMessage(optimisticImageMessage);
-            
-            const url = await uploadImage(file);
-            if (url && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    action: 'message',
+        });
+        
+        document.getElementById('refresh-chat-btn').addEventListener('click', () => {
+            scrollToBottom();
+        });
+        
+        document.getElementById('attach-btn').addEventListener('click', () => {
+            document.getElementById('image-upload').click();
+        });
+        
+        document.getElementById('image-upload').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const optimisticImageMessage = {
                     user_id: userId,
-                    group: currentGroup,
-                    image_url: url
-                }));
+                    user_name: userName,
+                    user_photo: userPhoto || '/static/images/default-avatar.svg',
+                    image_url: URL.createObjectURL(file),
+                    timestamp: new Date().toISOString()
+                };
+                
+                addMessage(optimisticImageMessage);
+                
+                const url = await uploadImage(file);
+                if (url && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        action: 'message',
+                        user_id: userId,
+                        group: currentGroup,
+                        image_url: url
+                    }));
+                }
             }
-        }
-    });
-    
+        });
+        
         console.log('All event listeners initialized successfully');
     } catch (error) {
         console.error('Error initializing GUPSHUP:', error);
