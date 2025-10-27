@@ -17,20 +17,15 @@ function getUserIdFromTelegram() {
         const tg = window.Telegram.WebApp;
         tg.expand();
         const user = tg.initDataUnsafe.user;
-        if (user) {
-            localStorage.setItem('gupshup-userId', user.id);
+        if (user && user.id) {
+            // ALWAYS use fresh Telegram ID - never use cached values for Telegram users
             return user.id;
         }
     }
     
-    const savedUserId = localStorage.getItem('gupshup-userId');
-    if (savedUserId) {
-        return parseInt(savedUserId);
-    }
-    
-    const newUserId = Math.floor(Math.random() * 1000000);
-    localStorage.setItem('gupshup-userId', newUserId);
-    return newUserId;
+    // Only for testing outside Telegram - use a random ID
+    const testUserId = 'test_' + Math.floor(Math.random() * 1000000);
+    return testUserId;
 }
 
 function setTheme(theme) {
