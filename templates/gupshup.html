@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>GUPSHUP - Group Chat</title>
+    <link rel="stylesheet" href="/static/css/gupshup.css">
+</head>
+<body>
+    <div id="app">
+        <div id="group-selection" class="screen active">
+            <div class="header">
+                <h1>🗣 GUPSHUP</h1>
+                <p>Choose a group to join</p>
+            </div>
+            
+            <div class="profile-preview">
+                <img id="preview-photo" src="/static/images/default-avatar.svg" alt="Profile">
+                <p id="preview-name">Loading...</p>
+                <button id="edit-profile-btn" class="btn-secondary">Edit Profile</button>
+            </div>
+            
+            <div class="groups-grid">
+                <button class="group-btn" data-group="ENGINEER">👨‍💻 ENGINEER</button>
+                <button class="group-btn" data-group="CIVIL">🏗️ CIVIL</button>
+                <button class="group-btn" data-group="DOCTOR">⚕️ DOCTOR</button>
+                <button class="group-btn" data-group="12TH">📚 12TH</button>
+                <button class="group-btn" data-group="11TH">📖 11TH</button>
+                <button class="group-btn" data-group="10TH">📝 10TH</button>
+                <button class="group-btn" data-group="9TH">✏️ 9TH</button>
+                <button class="group-btn" data-group="8TH">📓 8TH</button>
+            </div>
+        </div>
+
+        <div id="chat-screen" class="screen">
+            <div class="chat-header">
+                <button id="back-btn">←</button>
+                <div class="header-info">
+                    <h2 id="group-title">GROUP NAME</h2>
+                    <p id="online-count">0 members online</p>
+                </div>
+                <button id="group-menu-btn">⋮</button>
+            </div>
+            
+            <div id="messages-container"></div>
+            
+            <div id="typing-indicator" class="typing-indicator" style="display: none;">
+                <span></span> is typing...
+            </div>
+            
+            <div class="chat-input-container">
+                <input type="file" id="image-upload" accept="image/*" style="display: none;">
+                <button id="attach-btn" class="icon-btn">📎</button>
+                <button id="emoji-btn" class="icon-btn">😊</button>
+                <input type="text" id="message-input" placeholder="Type a message...">
+                <button id="send-btn" class="btn-primary">Send</button>
+            </div>
+        </div>
+
+        <div id="profile-edit" class="screen">
+            <div class="header">
+                <button id="profile-back-btn">←</button>
+                <h2>Edit Profile</h2>
+                <button id="save-profile-btn" class="btn-text">Save</button>
+            </div>
+            
+            <div class="profile-editor">
+                <div class="photo-upload">
+                    <img id="edit-photo-preview" src="/static/images/default-avatar.svg" alt="Profile Photo">
+                    <input type="file" id="photo-upload" accept="image/*" style="display: none;">
+                    <button id="change-photo-btn" class="btn-secondary">Change Photo</button>
+                </div>
+                
+                <div class="form-group">
+                    <label>Display Name</label>
+                    <input type="text" id="display-name-input" placeholder="Enter your name">
+                </div>
+            </div>
+        </div>
+
+        <div id="attach-menu" class="popup-menu" style="display: none;">
+            <button class="menu-item" id="upload-image-btn">📷 Photo</button>
+            <button class="menu-item" id="upload-gif-btn">🎬 GIF</button>
+            <button class="menu-item" id="close-attach-menu">❌ Cancel</button>
+        </div>
+    </div>
+
+    <script src="/static/js/gupshup.js"></script>
+</body>
+</html>
