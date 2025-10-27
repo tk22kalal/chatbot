@@ -13,3 +13,7 @@ pymongo
 pyrogram
 pyromod
 TgCrypto
+dnspython
+pymongo
+pyrogram
+TgCrypto
