@@ -14,23 +14,31 @@ async def group_command(client: Bot, message: Message):
     
     photo_url = ""
     try:
-        import os
         os.makedirs('static/uploads', exist_ok=True)
         
-        photos = await client.get_profile_photos(user_id, limit=1)
-        if photos.total_count > 0:
-            photo = photos.photos[0]
-            file_id = photo[-1].file_id
+        user_profile = await client.get_chat(user_id)
+        if user_profile.photo:
+            file_id = user_profile.photo.big_file_id
             destination = f"static/uploads/profile_{user_id}.jpg"
             downloaded_file = await client.download_media(file_id, file_name=destination)
             if downloaded_file and os.path.exists(downloaded_file):
                 photo_url = f"/static/uploads/profile_{user_id}.jpg"
     except Exception as e:
-        print(f"Failed to download profile photo: {e}")
+        print(f"Could not download profile photo: {e}")
     
     await add_gupshup_user(user_id, username, first_name, photo_url)
     
-    webapp_url = os.environ.get("REPLIT_DEV_DOMAIN", "localhost")
+    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+    
+    if not webapp_url:
+        await message.reply_text(
+            "⚠️ <b>Web interface not configured</b>\n\n"
+            "Please set the WEB_URL environment variable to your Heroku app URL.\n"
+            "Example: https://yourapp.herokuapp.com",
+            parse_mode="HTML"
+        )
+        return
+    
     if not webapp_url.startswith("http"):
         webapp_url = f"https://{webapp_url}"
     
