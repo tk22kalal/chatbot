@@ -20,6 +20,11 @@
                 <button id="edit-profile-btn" class="btn-secondary">Edit Profile</button>
             </div>
             
+            <div class="theme-selector">
+                <button class="theme-btn active" data-theme-btn="light">☀️ Light</button>
+                <button class="theme-btn" data-theme-btn="dark">🌙 Dark</button>
+            </div>
+            
             <div class="groups-grid">
                 <button class="group-btn" data-group="ENGINEER">👨‍💻 ENGINEER</button>
                 <button class="group-btn" data-group="CIVIL">🏗️ CIVIL</button>
@@ -50,8 +55,7 @@
             
             <div class="chat-input-container">
                 <input type="file" id="image-upload" accept="image/*" style="display: none;">
-                <button id="attach-btn" class="icon-btn">📎</button>
-                <button id="emoji-btn" class="icon-btn">😊</button>
+                <button id="attach-btn" class="icon-btn">📷</button>
                 <input type="text" id="message-input" placeholder="Type a message...">
                 <button id="send-btn" class="btn-primary">Send</button>
             </div>
@@ -78,11 +82,6 @@
             </div>
         </div>
 
-        <div id="attach-menu" class="popup-menu" style="display: none;">
-            <button class="menu-item" id="upload-image-btn">📷 Photo</button>
-            <button class="menu-item" id="upload-gif-btn">🎬 GIF</button>
-            <button class="menu-item" id="close-attach-menu">❌ Cancel</button>
-        </div>
     </div>
 
     <script src="/static/js/gupshup.js"></script>
