@@ -19,8 +19,8 @@
 }
 
 [data-theme="dark"] {
-    --primary-color: #3b82f6;
-    --primary-dark: #2563eb;
+    --primary-color: #2c5282;
+    --primary-dark: #1e3a5f;
     --bg-color: #1a1a1a;
     --chat-bg: #0f0f0f;
     --message-bg: #2a2a2a;
