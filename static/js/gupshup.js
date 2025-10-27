@@ -18,10 +18,19 @@ function getUserIdFromTelegram() {
         tg.expand();
         const user = tg.initDataUnsafe.user;
         if (user) {
+            localStorage.setItem('gupshup-userId', user.id);
             return user.id;
         }
     }
-    return Math.floor(Math.random() * 1000000);
+    
+    const savedUserId = localStorage.getItem('gupshup-userId');
+    if (savedUserId) {
+        return parseInt(savedUserId);
+    }
+    
+    const newUserId = Math.floor(Math.random() * 1000000);
+    localStorage.setItem('gupshup-userId', newUserId);
+    return newUserId;
 }
 
 function setTheme(theme) {
