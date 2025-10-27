@@ -196,20 +196,25 @@ async def get_user_data(request):
     user_id = request.query.get('user_id')
     if user_id:
         try:
-            user_id_int = int(user_id)
-            user = await get_gupshup_user(user_id_int)
+            # Try to convert to int, but handle string IDs for testing
+            try:
+                user_id_key = int(user_id)
+            except ValueError:
+                user_id_key = user_id
+            
+            user = await get_gupshup_user(user_id_key)
             if user:
                 return web.json_response({
                     'user_id': user['_id'],
-                    'display_name': user.get('display_name', f'User{user_id_int}'),
+                    'display_name': user.get('display_name', f'User{user_id_key}'),
                     'photo_url': user.get('photo_url', ''),
                     'telegram_username': user.get('telegram_username', '')
                 })
             else:
-                await add_gupshup_user(user_id_int, None, f'User{user_id_int}', None)
+                await add_gupshup_user(user_id_key, None, f'User{user_id_key}', None)
                 return web.json_response({
-                    'user_id': user_id_int,
-                    'display_name': f'User{user_id_int}',
+                    'user_id': user_id_key,
+                    'display_name': f'User{user_id_key}',
                     'photo_url': '',
                     'telegram_username': ''
                 })
