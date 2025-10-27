@@ -5,12 +5,7 @@ let userName = null;
 let userPhoto = null;
 let typingTimeout = null;
 let currentTheme = 'light';
-
-const screens = {
-    groupSelection: document.getElementById('group-selection'),
-    chatScreen: document.getElementById('chat-screen'),
-    profileEdit: document.getElementById('profile-edit')
-};
+let screens = {};
 
 function getUserIdFromTelegram() {
     if (window.Telegram && window.Telegram.WebApp) {
@@ -321,6 +316,13 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('DOM Content Loaded - Initializing GUPSHUP');
     
     try {
+        // Initialize screens object after DOM is ready
+        screens = {
+            groupSelection: document.getElementById('group-selection'),
+            chatScreen: document.getElementById('chat-screen'),
+            profileEdit: document.getElementById('profile-edit')
+        };
+        
         userId = getUserIdFromTelegram();
         console.log('User ID:', userId);
         
