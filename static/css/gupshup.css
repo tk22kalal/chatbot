@@ -78,6 +78,7 @@ body {
     text-align: center;
     padding: 20px;
     background: var(--chat-bg);
+    flex-shrink: 0;
 }
 
 .profile-preview img {
@@ -103,6 +104,7 @@ body {
     padding: 15px 20px;
     background: var(--chat-bg);
     border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
 }
 
 .theme-btn {
@@ -127,8 +129,14 @@ body {
     grid-template-columns: repeat(2, 1fr);
     gap: 15px;
     padding: 20px;
-    overflow-y: auto;
     flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+#group-selection {
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 
 .group-btn {
