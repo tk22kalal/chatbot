@@ -16,7 +16,15 @@ async def index(request):
     """Serve the main GUPSHUP page"""
     with open('templates/gupshup.html', 'r') as f:
         html_content = f.read()
-    return web.Response(text=html_content, content_type='text/html')
+    return web.Response(
+        text=html_content, 
+        content_type='text/html',
+        headers={
+            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+            'Pragma': 'no-cache',
+            'Expires': '0'
+        }
+    )
 
 def get_online_count(group_name):
     """Get number of users online in a group"""
@@ -239,9 +247,19 @@ async def update_user_profile(request):
         print(f"Error updating profile: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
+@web.middleware
+async def no_cache_middleware(request, handler):
+    """Add no-cache headers to prevent browser caching issues"""
+    response = await handler(request)
+    if request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
 async def create_app():
     """Create and configure the web application"""
-    app = web.Application()
+    app = web.Application(middlewares=[no_cache_middleware])
     
     app.router.add_get('/', index)
     app.router.add_get('/ws', websocket_handler)
