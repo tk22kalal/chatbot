@@ -7,11 +7,28 @@ import string
 from config import DB_URI, DB_NAME
 from datetime import datetime
 
-dbclient = pymongo.MongoClient(DB_URI)
-database = dbclient[DB_NAME]
+try:
+    if DB_URI and DB_URI.strip() and DB_URI not in ['', 'url']:
+        dbclient = pymongo.MongoClient(DB_URI)
+        database = dbclient[DB_NAME]
+        print("Connected to MongoDB successfully")
+    else:
+        print("WARNING: DATABASE_URL not configured. Using mock database for testing.")
+        from database.mock_db import MockDatabase
+        database = MockDatabase()
+        dbclient = None
+except Exception as e:
+    print(f"WARNING: Failed to connect to database: {e}")
+    print("Using mock database for testing.")
+    from database.mock_db import MockDatabase
+    database = MockDatabase()
+    dbclient = None
 
 user_data = database['users']
 chat_data = database['chats']
+gupshup_users = database['gupshup_users']
+gupshup_messages = database['gupshup_messages']
+gupshup_groups = database['gupshup_groups']
 
 def generate_chat_token():
     """Generate a unique 8-character token for chat sessions"""
@@ -137,3 +154,62 @@ async def get_total_chats():
 
 async def get_active_chats():
     return chat_data.count_documents({'end_time': None})
+
+async def add_gupshup_user(user_id: int, telegram_username: str = None, telegram_first_name: str = None, telegram_photo_url: str = None):
+    """Add or update a GUPSHUP user"""
+    existing_user = gupshup_users.find_one({'_id': user_id})
+    
+    if not existing_user:
+        gupshup_users.insert_one({
+            '_id': user_id,
+            'telegram_username': telegram_username,
+            'telegram_first_name': telegram_first_name,
+            'display_name': telegram_first_name or telegram_username or f"User{user_id}",
+            'photo_url': telegram_photo_url or '',
+            'created_at': datetime.now()
+        })
+    return
+
+async def get_gupshup_user(user_id: int):
+    """Get GUPSHUP user data"""
+    return gupshup_users.find_one({'_id': user_id})
+
+async def update_gupshup_profile(user_id: int, display_name: str = None, photo_url: str = None):
+    """Update user's display name and/or photo"""
+    update_data = {}
+    if display_name:
+        update_data['display_name'] = display_name
+    if photo_url:
+        update_data['photo_url'] = photo_url
+    
+    if update_data:
+        gupshup_users.update_one({'_id': user_id}, {'$set': update_data})
+    return
+
+async def save_gupshup_message(message_data: dict):
+    """Save a message to a group"""
+    gupshup_messages.insert_one(message_data)
+    return
+
+async def get_group_messages(group_name: str, limit: int = 50):
+    """Get recent messages from a group"""
+    messages = gupshup_messages.find({'group': group_name}).sort('timestamp', -1).limit(limit)
+    
+    result = []
+    for msg in messages:
+        user = await get_gupshup_user(msg['user_id'])
+        result.append({
+            'user_name': user.get('display_name', 'Anonymous') if user else 'Anonymous',
+            'user_photo': user.get('photo_url', '') if user else '',
+            'text': msg.get('text', ''),
+            'image_url': msg.get('image_url', ''),
+            'gif_url': msg.get('gif_url', ''),
+            'timestamp': msg['timestamp'].isoformat()
+        })
+    
+    result.reverse()
+    return result
+
+async def get_active_users_in_group(group_name: str):
+    """Get count of active users in a group"""
+    return gupshup_messages.distinct('user_id', {'group': group_name})
