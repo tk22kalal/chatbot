@@ -318,25 +318,40 @@ function scrollToBottom() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    userId = getUserIdFromTelegram();
+    console.log('DOM Content Loaded - Initializing GUPSHUP');
     
-    loadTheme();
-    initWebSocket();
-    loadUserData();
-    
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const theme = btn.dataset.themeBtn;
-            setTheme(theme);
+    try {
+        userId = getUserIdFromTelegram();
+        console.log('User ID:', userId);
+        
+        loadTheme();
+        initWebSocket();
+        loadUserData();
+        
+        const themeBtns = document.querySelectorAll('.theme-btn');
+        console.log('Found theme buttons:', themeBtns.length);
+        themeBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                console.log('Theme button clicked');
+                const theme = btn.dataset.themeBtn;
+                setTheme(theme);
+            });
         });
-    });
-    
-    document.querySelectorAll('.group-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const group = btn.dataset.group;
-            joinGroup(group);
+        
+        const groupBtns = document.querySelectorAll('.group-btn');
+        console.log('Found group buttons:', groupBtns.length);
+        groupBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                console.log('Group button clicked:', btn.dataset.group);
+                const group = btn.dataset.group;
+                joinGroup(group);
+            });
         });
-    });
+        
+        document.getElementById('edit-profile-btn').addEventListener('click', () => {
+            console.log('Edit Profile button clicked');
+            showScreen('profileEdit');
+        });
     
     document.getElementById('back-btn').addEventListener('click', () => {
         if (currentGroup) {
@@ -356,10 +371,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     document.getElementById('message-input').addEventListener('input', () => {
         sendTypingIndicator();
-    });
-    
-    document.getElementById('edit-profile-btn').addEventListener('click', () => {
-        showScreen('profileEdit');
     });
     
     document.getElementById('profile-back-btn').addEventListener('click', () => {
@@ -415,4 +426,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+    
+        console.log('All event listeners initialized successfully');
+    } catch (error) {
+        console.error('Error initializing GUPSHUP:', error);
+    }
 });
