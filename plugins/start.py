@@ -2,7 +2,8 @@
 
 import asyncio
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, CallbackQuery, WebAppInfo
+import os
 
 from bot import Bot
 from config import ADMINS, START_MSG
@@ -37,10 +38,19 @@ async def start_command(client: Client, message: Message):
             reply_markup=gender_keyboard
         )
     else:
-        # User already has gender - show search keyboard
-        search_keyboard = ReplyKeyboardMarkup([
-            [KeyboardButton("🔎 Find Partner")]
-        ], resize_keyboard=True)
+        # User already has gender - show search keyboard with GUPSHUP
+        webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+        if webapp_url and not webapp_url.startswith("http"):
+            webapp_url = f"https://{webapp_url}"
+        
+        if webapp_url:
+            search_keyboard = ReplyKeyboardMarkup([
+                [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+            ], resize_keyboard=True)
+        else:
+            search_keyboard = ReplyKeyboardMarkup([
+                [KeyboardButton("🔎 Find Partner")]
+            ], resize_keyboard=True)
         
         await message.reply_text(
             f"Welcome back! Ready to chat anonymously?\n\nYour gender: {user['gender'].title()}\n\nClick 'Find Partner' or use /search to start chatting!",
@@ -56,10 +66,19 @@ async def gender_callback(client: Client, callback_query: CallbackQuery):
     # Update user gender in database
     await update_user_gender(user_id, gender)
     
-    # Show search keyboard
-    search_keyboard = ReplyKeyboardMarkup([
-        [KeyboardButton("🔎 Find Partner")]
-    ], resize_keyboard=True)
+    # Show search keyboard with GUPSHUP
+    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+    if webapp_url and not webapp_url.startswith("http"):
+        webapp_url = f"https://{webapp_url}"
+    
+    if webapp_url:
+        search_keyboard = ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+        ], resize_keyboard=True)
+    else:
+        search_keyboard = ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner")]
+        ], resize_keyboard=True)
     
     await callback_query.message.edit_text(
         f"✅ Gender set to: {gender.title()}\n\nNow click 'Find Partner' or use /search to start chatting anonymously!",
