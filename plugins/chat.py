@@ -3,7 +3,8 @@ from config import ADMINS
 import random
 import time
 from pyrogram import Client, filters
-from pyrogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from pyrogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, WebAppInfo
+import os
 from pyrogram.enums import ChatAction
 from pyrogram.enums import ParseMode
 from bot import Bot
@@ -124,10 +125,19 @@ async def stop_chat(client: Bot, message: Message):
     await clear_user_chat_state(user_id)
     await clear_user_chat_state(partner_id)
     
-    # Notify both users
-    search_keyboard = ReplyKeyboardMarkup([
-        [KeyboardButton("🔎 Find Partner")]
-    ], resize_keyboard=True)
+    # Notify both users with GUPSHUP button
+    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+    if webapp_url and not webapp_url.startswith("http"):
+        webapp_url = f"https://{webapp_url}"
+    
+    if webapp_url:
+        search_keyboard = ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+        ], resize_keyboard=True)
+    else:
+        search_keyboard = ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner")]
+        ], resize_keyboard=True)
     
     await message.reply_text(STOPPED_CHAT_MSG, reply_markup=search_keyboard)
     await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_keyboard)
@@ -163,10 +173,19 @@ async def next_partner(client: Bot, message: Message):
     await clear_user_chat_state(user_id)
     await clear_user_chat_state(partner_id)
     
-    # Notify partner
-    search_keyboard = ReplyKeyboardMarkup([
-        [KeyboardButton("🔎 Find Partner")]
-    ], resize_keyboard=True)
+    # Notify partner with GUPSHUP button
+    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+    if webapp_url and not webapp_url.startswith("http"):
+        webapp_url = f"https://{webapp_url}"
+    
+    if webapp_url:
+        search_keyboard = ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+        ], resize_keyboard=True)
+    else:
+        search_keyboard = ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner")]
+        ], resize_keyboard=True)
     
     await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_keyboard)
     
