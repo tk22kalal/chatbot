@@ -84,6 +84,7 @@ async def websocket_handler(request):
                         broadcast_data = {
                             'type': 'new_message',
                             'message': {
+                                'user_id': user_id,
                                 'user_name': user.get('display_name', 'Anonymous'),
                                 'user_photo': user.get('photo_url', ''),
                                 'text': data.get('text'),
