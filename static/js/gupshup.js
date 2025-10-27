@@ -40,6 +40,22 @@ function loadTheme() {
     setTheme(savedTheme);
 }
 
+function saveUserData() {
+    localStorage.setItem('gupshup-userName', userName);
+    localStorage.setItem('gupshup-userPhoto', userPhoto || '');
+}
+
+function loadSavedUserData() {
+    const savedName = localStorage.getItem('gupshup-userName');
+    const savedPhoto = localStorage.getItem('gupshup-userPhoto');
+    if (savedName) {
+        userName = savedName;
+    }
+    if (savedPhoto) {
+        userPhoto = savedPhoto;
+    }
+}
+
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.remove('active'));
     screens[screenName].classList.add('active');
@@ -135,12 +151,24 @@ function sendMessage() {
     
     if (!text || !currentGroup) return;
     
-    ws.send(JSON.stringify({
-        action: 'message',
+    const optimisticMessage = {
         user_id: userId,
-        group: currentGroup,
-        text: text
-    }));
+        user_name: userName,
+        user_photo: userPhoto || '/static/images/default-avatar.svg',
+        text: text,
+        timestamp: new Date().toISOString()
+    };
+    
+    addMessage(optimisticMessage);
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            action: 'message',
+            user_id: userId,
+            group: currentGroup,
+            text: text
+        }));
+    }
     
     input.value = '';
 }
@@ -151,7 +179,7 @@ function addMessage(message) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     
-    if (message.user_id == userId) {
+    if (String(message.user_id) === String(userId)) {
         messageDiv.classList.add('own');
     }
     
@@ -225,18 +253,28 @@ function escapeHtml(text) {
 }
 
 async function loadUserData() {
+    loadSavedUserData();
+    
+    if (userName) {
+        updateProfilePreview();
+    }
+    
     try {
         const response = await fetch(`/api/user?user_id=${userId}`);
         if (response.ok) {
             const data = await response.json();
             userName = data.display_name;
             userPhoto = data.photo_url;
+            saveUserData();
             updateProfilePreview();
         }
     } catch (error) {
         console.error('Failed to load user data:', error);
-        userName = 'User' + userId;
-        updateProfilePreview();
+        if (!userName) {
+            userName = 'User' + userId;
+            saveUserData();
+            updateProfilePreview();
+        }
     }
 }
 
@@ -272,6 +310,7 @@ async function saveProfile() {
     
     if (newName) {
         userName = newName;
+        saveUserData();
         
         try {
             await fetch('/api/user/update', {
@@ -292,6 +331,11 @@ async function saveProfile() {
         updateProfilePreview();
         showScreen('groupSelection');
     }
+}
+
+function scrollToBottom() {
+    const container = document.getElementById('messages-container');
+    container.scrollTop = container.scrollHeight;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -355,9 +399,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = await uploadImage(file);
             if (url) {
                 userPhoto = url;
+                saveUserData();
                 document.getElementById('edit-photo-preview').src = url;
             }
         }
+    });
+    
+    document.getElementById('refresh-chat-btn').addEventListener('click', () => {
+        scrollToBottom();
     });
     
     document.getElementById('attach-btn').addEventListener('click', () => {
@@ -367,6 +416,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('image-upload').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {
+            const optimisticImageMessage = {
+                user_id: userId,
+                user_name: userName,
+                user_photo: userPhoto || '/static/images/default-avatar.svg',
+                image_url: URL.createObjectURL(file),
+                timestamp: new Date().toISOString()
+            };
+            
+            addMessage(optimisticImageMessage);
+            
             const url = await uploadImage(file);
             if (url && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
