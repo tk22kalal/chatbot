@@ -4,6 +4,7 @@ let userId = null;
 let userName = null;
 let userPhoto = null;
 let typingTimeout = null;
+let currentTheme = 'light';
 
 const screens = {
     groupSelection: document.getElementById('group-selection'),
@@ -21,6 +22,22 @@ function getUserIdFromTelegram() {
         }
     }
     return Math.floor(Math.random() * 1000000);
+}
+
+function setTheme(theme) {
+    currentTheme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('gupshup-theme', theme);
+    
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.querySelector(`[data-theme-btn="${theme}"]`)?.classList.add('active');
+}
+
+function loadTheme() {
+    const savedTheme = localStorage.getItem('gupshup-theme') || 'light';
+    setTheme(savedTheme);
 }
 
 function showScreen(screenName) {
@@ -128,11 +145,15 @@ function sendMessage() {
     input.value = '';
 }
 
-function addMessage(message) {
+function addMessage(message, isOwn = false) {
     const container = document.getElementById('messages-container');
     
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
+    
+    if (isOwn || message.user_id === userId) {
+        messageDiv.classList.add('own');
+    }
     
     const avatar = message.user_photo || '/static/images/default-avatar.svg';
     const time = new Date(message.timestamp).toLocaleTimeString('en-US', { 
@@ -252,12 +273,21 @@ async function saveProfile() {
     if (newName) {
         userName = newName;
         
-        ws.send(JSON.stringify({
-            action: 'update_profile',
-            user_id: userId,
-            name: userName,
-            photo_url: userPhoto
-        }));
+        try {
+            await fetch('/api/user/update', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    user_id: userId,
+                    display_name: userName,
+                    photo_url: userPhoto
+                })
+            });
+        } catch (error) {
+            console.error('Failed to update profile:', error);
+        }
         
         updateProfilePreview();
         showScreen('groupSelection');
@@ -267,8 +297,16 @@ async function saveProfile() {
 document.addEventListener('DOMContentLoaded', () => {
     userId = getUserIdFromTelegram();
     
+    loadTheme();
     initWebSocket();
     loadUserData();
+    
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const theme = btn.dataset.themeBtn;
+            setTheme(theme);
+        });
+    });
     
     document.querySelectorAll('.group-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -287,7 +325,8 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('send-btn').addEventListener('click', sendMessage);
     
     document.getElementById('message-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
             sendMessage();
         }
     });
@@ -322,16 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     
     document.getElementById('attach-btn').addEventListener('click', () => {
-        document.getElementById('attach-menu').style.display = 'block';
-    });
-    
-    document.getElementById('upload-image-btn').addEventListener('click', () => {
         document.getElementById('image-upload').click();
-        document.getElementById('attach-menu').style.display = 'none';
-    });
-    
-    document.getElementById('close-attach-menu').addEventListener('click', () => {
-        document.getElementById('attach-menu').style.display = 'none';
     });
     
     document.getElementById('image-upload').addEventListener('change', async (e) => {
@@ -347,11 +377,5 @@ document.addEventListener('DOMContentLoaded', () => {
                 }));
             }
         }
-    });
-    
-    document.getElementById('emoji-btn').addEventListener('click', () => {
-        const input = document.getElementById('message-input');
-        input.value += '😊';
-        input.focus();
     });
 });
