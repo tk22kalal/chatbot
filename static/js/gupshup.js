@@ -145,13 +145,13 @@ function sendMessage() {
     input.value = '';
 }
 
-function addMessage(message, isOwn = false) {
+function addMessage(message) {
     const container = document.getElementById('messages-container');
     
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     
-    if (isOwn || message.user_id === userId) {
+    if (message.user_id == userId) {
         messageDiv.classList.add('own');
     }
     
