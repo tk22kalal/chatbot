@@ -179,7 +179,7 @@ async def next_partner(client: Bot, message: Message):
         await message.reply_text(SEARCHING_MSG)
 
 # Handle all messages (forward to partner) - ANONYMOUSLY
-@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users']) & ~filters.user(ADMINS))
+@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users', 'group', 'broadcast', 'stats']) & ~filters.user(ADMINS))
 async def handle_messages(client: Bot, message: Message):
     user_id = message.from_user.id
     user = await get_user(user_id)
