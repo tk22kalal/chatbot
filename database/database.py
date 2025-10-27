@@ -192,13 +192,19 @@ async def save_gupshup_message(message_data: dict):
     return
 
 async def get_group_messages(group_name: str, limit: int = 50):
-    """Get recent messages from a group"""
+    """Get recent messages from a group (auto-deletes messages older than 2 days)"""
+    from datetime import timedelta
+    
+    two_days_ago = datetime.now() - timedelta(days=2)
+    gupshup_messages.delete_many({'group': group_name, 'timestamp': {'$lt': two_days_ago}})
+    
     messages = gupshup_messages.find({'group': group_name}).sort('timestamp', -1).limit(limit)
     
     result = []
     for msg in messages:
         user = await get_gupshup_user(msg['user_id'])
         result.append({
+            'user_id': msg['user_id'],
             'user_name': user.get('display_name', 'Anonymous') if user else 'Anonymous',
             'user_photo': user.get('photo_url', '') if user else '',
             'text': msg.get('text', ''),
