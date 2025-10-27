@@ -7,3 +7,9 @@ pymongo
 dnspython
 # --- For-Web-Response ------- #
 aiohttp
+aiohttp
+dnspython
+pymongo
+pyrogram
+pyromod
+TgCrypto
