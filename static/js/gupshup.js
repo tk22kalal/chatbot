@@ -49,21 +49,7 @@ function loadTheme() {
     setTheme(savedTheme);
 }
 
-function saveUserData() {
-    localStorage.setItem('gupshup-userName', userName);
-    localStorage.setItem('gupshup-userPhoto', userPhoto || '');
-}
-
-function loadSavedUserData() {
-    const savedName = localStorage.getItem('gupshup-userName');
-    const savedPhoto = localStorage.getItem('gupshup-userPhoto');
-    if (savedName) {
-        userName = savedName;
-    }
-    if (savedPhoto) {
-        userPhoto = savedPhoto;
-    }
-}
+// Profile data is now stored in database per user ID, not localStorage
 
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.remove('active'));
@@ -262,28 +248,18 @@ function escapeHtml(text) {
 }
 
 async function loadUserData() {
-    loadSavedUserData();
-    
-    if (userName) {
-        updateProfilePreview();
-    }
-    
     try {
         const response = await fetch(`/api/user?user_id=${userId}`);
         if (response.ok) {
             const data = await response.json();
             userName = data.display_name;
             userPhoto = data.photo_url;
-            saveUserData();
             updateProfilePreview();
         }
     } catch (error) {
         console.error('Failed to load user data:', error);
-        if (!userName) {
-            userName = 'User' + userId;
-            saveUserData();
-            updateProfilePreview();
-        }
+        userName = 'User' + userId;
+        updateProfilePreview();
     }
 }
 
@@ -319,7 +295,6 @@ async function saveProfile() {
     
     if (newName) {
         userName = newName;
-        saveUserData();
         
         try {
             await fetch('/api/user/update', {
@@ -408,7 +383,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const url = await uploadImage(file);
             if (url) {
                 userPhoto = url;
-                saveUserData();
                 document.getElementById('edit-photo-preview').src = url;
             }
         }
