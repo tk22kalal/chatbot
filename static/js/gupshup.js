@@ -17,11 +17,15 @@ function getUserIdFromTelegram() {
         const tg = window.Telegram.WebApp;
         tg.expand();
         const user = tg.initDataUnsafe.user;
-        if (user) {
+        if (user && user.id) {
+            // ALWAYS use fresh Telegram ID - never use cached values for Telegram users
             return user.id;
         }
     }
-    return Math.floor(Math.random() * 1000000);
+    
+    // Only for testing outside Telegram - use a random ID
+    const testUserId = 'test_' + Math.floor(Math.random() * 1000000);
+    return testUserId;
 }
 
 function setTheme(theme) {
@@ -39,6 +43,8 @@ function loadTheme() {
     const savedTheme = localStorage.getItem('gupshup-theme') || 'light';
     setTheme(savedTheme);
 }
+
+// Profile data is now stored in database per user ID, not localStorage
 
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.remove('active'));
@@ -135,12 +141,24 @@ function sendMessage() {
     
     if (!text || !currentGroup) return;
     
-    ws.send(JSON.stringify({
-        action: 'message',
+    const optimisticMessage = {
         user_id: userId,
-        group: currentGroup,
-        text: text
-    }));
+        user_name: userName,
+        user_photo: userPhoto || '/static/images/default-avatar.svg',
+        text: text,
+        timestamp: new Date().toISOString()
+    };
+    
+    addMessage(optimisticMessage);
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            action: 'message',
+            user_id: userId,
+            group: currentGroup,
+            text: text
+        }));
+    }
     
     input.value = '';
 }
@@ -151,7 +169,7 @@ function addMessage(message) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     
-    if (message.user_id == userId) {
+    if (String(message.user_id) === String(userId)) {
         messageDiv.classList.add('own');
     }
     
@@ -294,6 +312,11 @@ async function saveProfile() {
     }
 }
 
+function scrollToBottom() {
+    const container = document.getElementById('messages-container');
+    container.scrollTop = container.scrollHeight;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     userId = getUserIdFromTelegram();
     
@@ -360,6 +383,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    document.getElementById('refresh-chat-btn').addEventListener('click', () => {
+        scrollToBottom();
+    });
+    
     document.getElementById('attach-btn').addEventListener('click', () => {
         document.getElementById('image-upload').click();
     });
@@ -367,6 +394,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('image-upload').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {
+            const optimisticImageMessage = {
+                user_id: userId,
+                user_name: userName,
+                user_photo: userPhoto || '/static/images/default-avatar.svg',
+                image_url: URL.createObjectURL(file),
+                timestamp: new Date().toISOString()
+            };
+            
+            addMessage(optimisticImageMessage);
+            
             const url = await uploadImage(file);
             if (url && ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({
