@@ -62,7 +62,6 @@ body {
     color: white;
     padding: 20px;
     text-align: center;
-    flex-shrink: 0;
 }
 
 .header h1 {
@@ -79,8 +78,6 @@ body {
     text-align: center;
     padding: 20px;
     background: var(--chat-bg);
-    flex-shrink: 0;
-    /* REMOVED: position: relative and z-index */
 }
 
 .profile-preview img {
@@ -106,8 +103,6 @@ body {
     padding: 15px 20px;
     background: var(--chat-bg);
     border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
-    /* REMOVED: position and z-index */
 }
 
 .theme-btn {
@@ -120,7 +115,6 @@ body {
     font-size: 14px;
     font-weight: 600;
     transition: all 0.2s;
-    /* REMOVED: position, z-index, and pointer-events */
 }
 
 .theme-btn.active {
@@ -133,23 +127,8 @@ body {
     grid-template-columns: repeat(2, 1fr);
     gap: 15px;
     padding: 20px;
-    /* REMOVED: position and z-index */
-}
-
-#group-selection {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-}
-
-.gupshup-content {
-    flex: 1;
     overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-    display: flex;
-    flex-direction: column;
-    /* REMOVED: position and z-index */
+    flex: 1;
 }
 
 .group-btn {
@@ -163,7 +142,6 @@ body {
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    /* REMOVED: position, z-index, pointer-events, and -webkit-tap-highlight-color */
 }
 
 .group-btn:active {
@@ -364,7 +342,6 @@ body {
     font-weight: 600;
     cursor: pointer;
     font-size: 14px;
-    /* REMOVED: position, z-index, pointer-events, and -webkit-tap-highlight-color */
 }
 
 .btn-text {
