@@ -16,7 +16,11 @@ async def index(request):
     """Serve the main GUPSHUP page"""
     with open('templates/gupshup.html', 'r') as f:
         html_content = f.read()
-    return web.Response(text=html_content, content_type='text/html')
+    return web.Response(
+        text=html_content, 
+        content_type='text/html',
+        headers={'Cache-Control': 'no-cache, no-store, must-revalidate'}
+    )
 
 def get_online_count(group_name):
     """Get number of users online in a group"""
