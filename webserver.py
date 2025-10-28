@@ -215,7 +215,7 @@ async def get_user_data(request):
                     'telegram_username': user.get('telegram_username', '')
                 })
             else:
-                await add_gupshup_user(user_id_key, None, f'User{user_id_key}', None)
+                await add_gupshup_user(user_id_key, '', f'User{user_id_key}', '')
                 return web.json_response({
                     'user_id': user_id_key,
                     'display_name': f'User{user_id_key}',
