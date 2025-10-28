@@ -48,24 +48,15 @@ function loadTheme() {
     setTheme(savedTheme);
 }
 
-// Profile data persistence using localStorage
+// Profile data - ALWAYS fetch from server, no localStorage caching
+// This ensures messages always show the latest profile
 function saveProfileToLocalStorage() {
-    localStorage.setItem('gupshup-profile-name', userName || '');
-    localStorage.setItem('gupshup-profile-photo', userPhoto || '');
+    // Removed localStorage - profile is always stored on server only
 }
 
 function loadProfileFromLocalStorage() {
-    const savedName = localStorage.getItem('gupshup-profile-name');
-    const savedPhoto = localStorage.getItem('gupshup-profile-photo');
-    
-    if (savedName) {
-        userName = savedName;
-    }
-    if (savedPhoto) {
-        userPhoto = savedPhoto;
-    }
-    
-    return { name: savedName, photo: savedPhoto };
+    // Removed localStorage - always fetch fresh from server
+    return { name: null, photo: null };
 }
 
 function showScreen(screenName) {
@@ -270,33 +261,20 @@ function escapeHtml(text) {
 }
 
 async function loadUserData() {
-    const localProfile = loadProfileFromLocalStorage();
-    
-    if (localProfile.name) {
-        userName = localProfile.name;
-        userPhoto = localProfile.photo;
-        updateProfilePreview();
-    }
-    
+    // ALWAYS fetch fresh profile from server - no caching
+    // This ensures all messages show the latest profile
     try {
         const response = await fetch(`/api/user?user_id=${userId}`);
         if (response.ok) {
             const data = await response.json();
-            
-            if (!localProfile.name) {
-                userName = data.display_name;
-                userPhoto = data.photo_url;
-                saveProfileToLocalStorage();
-            }
-            
+            userName = data.display_name;
+            userPhoto = data.photo_url;
             updateProfilePreview();
         }
     } catch (error) {
         console.error('Failed to load user data:', error);
-        if (!userName) {
-            userName = 'User' + userId;
-            saveProfileToLocalStorage();
-        }
+        userName = 'User' + userId;
+        userPhoto = '';
         updateProfilePreview();
     }
 }
@@ -334,8 +312,6 @@ async function saveProfile() {
     if (newName) {
         userName = newName;
         
-        saveProfileToLocalStorage();
-        
         try {
             await fetch('/api/user/update', {
                 method: 'POST',
@@ -348,12 +324,14 @@ async function saveProfile() {
                     photo_url: userPhoto
                 })
             });
+            
+            // Profile saved to server successfully
+            updateProfilePreview();
+            showScreen('groupSelection');
         } catch (error) {
             console.error('Failed to update profile:', error);
+            alert('Failed to save profile. Please try again.');
         }
-        
-        updateProfilePreview();
-        showScreen('groupSelection');
     }
 }
 
@@ -424,7 +402,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (url) {
                 userPhoto = url;
                 document.getElementById('edit-photo-preview').src = url;
-                saveProfileToLocalStorage();
+                // Photo will be saved when user clicks "Save Profile" button
             }
         }
     });
