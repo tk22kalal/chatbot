@@ -23,8 +23,12 @@ function getUserIdFromTelegram() {
         }
     }
     
-    // Only for testing outside Telegram - use a random ID
-    const testUserId = 'test_' + Math.floor(Math.random() * 1000000);
+    // Only for testing outside Telegram - use a persistent ID from localStorage
+    let testUserId = localStorage.getItem('gupshup-user-id');
+    if (!testUserId) {
+        testUserId = 'test_' + Math.floor(Math.random() * 1000000);
+        localStorage.setItem('gupshup-user-id', testUserId);
+    }
     return testUserId;
 }
 
