@@ -205,11 +205,10 @@ async def get_group_messages(group_name: str, limit: int = 50):
     
     result = []
     for msg in messages:
-        user = await get_gupshup_user(msg['user_id'])
         result.append({
             'user_id': msg['user_id'],
-            'user_name': user.get('display_name', 'Anonymous') if user else 'Anonymous',
-            'user_photo': user.get('photo_url', '') if user else '',
+            'user_name': msg.get('display_name', 'Anonymous'),
+            'user_photo': msg.get('photo_url', ''),
             'text': msg.get('text', ''),
             'image_url': msg.get('image_url', ''),
             'gif_url': msg.get('gif_url', ''),
