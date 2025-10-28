@@ -77,6 +77,8 @@ async def websocket_handler(request):
                         message_data = {
                             'user_id': user_id,
                             'group': group_name,
+                            'display_name': user.get('display_name', 'Anonymous') if user else 'Anonymous',
+                            'photo_url': user.get('photo_url', '') if user else '',
                             'text': data.get('text'),
                             'image_url': data.get('image_url'),
                             'gif_url': data.get('gif_url'),
