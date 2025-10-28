@@ -195,7 +195,9 @@ async def save_gupshup_message(message_data: dict):
     return
 
 async def get_group_messages(group_name: str, limit: int = 50):
-    """Get recent messages from a group (auto-deletes messages older than 2 days)"""
+    """Get recent messages from a group (auto-deletes messages older than 2 days)
+    Always fetches the user's CURRENT profile (name and photo) instead of the stored one
+    so that when users update their profile, all their past messages show the new profile"""
     from datetime import timedelta
     
     two_days_ago = datetime.now() - timedelta(days=2)
@@ -205,10 +207,20 @@ async def get_group_messages(group_name: str, limit: int = 50):
     
     result = []
     for msg in messages:
+        user_id = msg['user_id']
+        current_user = await get_gupshup_user(user_id)
+        
+        if current_user:
+            user_name = current_user.get('display_name', f'User{user_id}')
+            user_photo = current_user.get('photo_url', '')
+        else:
+            user_name = f'User{user_id}'
+            user_photo = ''
+        
         result.append({
-            'user_id': msg['user_id'],
-            'user_name': msg.get('display_name', 'Anonymous'),
-            'user_photo': msg.get('photo_url', ''),
+            'user_id': user_id,
+            'user_name': user_name,
+            'user_photo': user_photo,
             'text': msg.get('text', ''),
             'image_url': msg.get('image_url', ''),
             'gif_url': msg.get('gif_url', ''),
