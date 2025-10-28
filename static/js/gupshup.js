@@ -5,22 +5,23 @@ let userName = null;
 let userPhoto = null;
 let typingTimeout = null;
 let currentTheme = 'light';
-let screens = {};
+
+const screens = {
+    groupSelection: document.getElementById('group-selection'),
+    chatScreen: document.getElementById('chat-screen'),
+    profileEdit: document.getElementById('profile-edit')
+};
 
 function getUserIdFromTelegram() {
     if (window.Telegram && window.Telegram.WebApp) {
         const tg = window.Telegram.WebApp;
         tg.expand();
         const user = tg.initDataUnsafe.user;
-        if (user && user.id) {
-            // ALWAYS use fresh Telegram ID - never use cached values for Telegram users
+        if (user) {
             return user.id;
         }
     }
-    
-    // Only for testing outside Telegram - use a random ID
-    const testUserId = 'test_' + Math.floor(Math.random() * 1000000);
-    return testUserId;
+    return Math.floor(Math.random() * 1000000);
 }
 
 function setTheme(theme) {
@@ -38,8 +39,6 @@ function loadTheme() {
     const savedTheme = localStorage.getItem('gupshup-theme') || 'light';
     setTheme(savedTheme);
 }
-
-// Profile data is now stored in database per user ID, not localStorage
 
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.remove('active'));
@@ -136,24 +135,12 @@ function sendMessage() {
     
     if (!text || !currentGroup) return;
     
-    const optimisticMessage = {
+    ws.send(JSON.stringify({
+        action: 'message',
         user_id: userId,
-        user_name: userName,
-        user_photo: userPhoto || '/static/images/default-avatar.svg',
-        text: text,
-        timestamp: new Date().toISOString()
-    };
-    
-    addMessage(optimisticMessage);
-    
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            action: 'message',
-            user_id: userId,
-            group: currentGroup,
-            text: text
-        }));
-    }
+        group: currentGroup,
+        text: text
+    }));
     
     input.value = '';
 }
@@ -164,7 +151,7 @@ function addMessage(message) {
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
     
-    if (String(message.user_id) === String(userId)) {
+    if (message.user_id == userId) {
         messageDiv.classList.add('own');
     }
     
@@ -307,130 +294,88 @@ async function saveProfile() {
     }
 }
 
-function scrollToBottom() {
-    const container = document.getElementById('messages-container');
-    container.scrollTop = container.scrollHeight;
-}
-
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM Content Loaded - Initializing GUPSHUP');
+    userId = getUserIdFromTelegram();
     
-    try {
-        // Initialize screens object after DOM is ready
-        screens = {
-            groupSelection: document.getElementById('group-selection'),
-            chatScreen: document.getElementById('chat-screen'),
-            profileEdit: document.getElementById('profile-edit')
-        };
-        
-        userId = getUserIdFromTelegram();
-        console.log('User ID:', userId);
-        
-        loadTheme();
-        initWebSocket();
-        loadUserData();
-        
-        const themeBtns = document.querySelectorAll('.theme-btn');
-        console.log('Found theme buttons:', themeBtns.length);
-        themeBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                console.log('Theme button clicked');
-                const theme = btn.dataset.themeBtn;
-                setTheme(theme);
-            });
+    loadTheme();
+    initWebSocket();
+    loadUserData();
+    
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const theme = btn.dataset.themeBtn;
+            setTheme(theme);
         });
-        
-        const groupBtns = document.querySelectorAll('.group-btn');
-        console.log('Found group buttons:', groupBtns.length);
-        groupBtns.forEach(btn => {
-            btn.addEventListener('click', () => {
-                console.log('Group button clicked:', btn.dataset.group);
-                const group = btn.dataset.group;
-                joinGroup(group);
-            });
+    });
+    
+    document.querySelectorAll('.group-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const group = btn.dataset.group;
+            joinGroup(group);
         });
-        
-        document.getElementById('edit-profile-btn').addEventListener('click', () => {
-            console.log('Edit Profile button clicked');
-            showScreen('profileEdit');
-        });
-        
-        document.getElementById('back-btn').addEventListener('click', () => {
-            if (currentGroup) {
-                currentGroup = null;
-                showScreen('groupSelection');
-            }
-        });
-        
-        document.getElementById('send-btn').addEventListener('click', sendMessage);
-        
-        document.getElementById('message-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-            }
-        });
-        
-        document.getElementById('message-input').addEventListener('input', () => {
-            sendTypingIndicator();
-        });
-        
-        document.getElementById('profile-back-btn').addEventListener('click', () => {
+    });
+    
+    document.getElementById('back-btn').addEventListener('click', () => {
+        if (currentGroup) {
+            currentGroup = null;
             showScreen('groupSelection');
-        });
-        
-        document.getElementById('save-profile-btn').addEventListener('click', saveProfile);
-        
-        document.getElementById('change-photo-btn').addEventListener('click', () => {
-            document.getElementById('photo-upload').click();
-        });
-        
-        document.getElementById('photo-upload').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const url = await uploadImage(file);
-                if (url) {
-                    userPhoto = url;
-                    document.getElementById('edit-photo-preview').src = url;
-                }
+        }
+    });
+    
+    document.getElementById('send-btn').addEventListener('click', sendMessage);
+    
+    document.getElementById('message-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+    
+    document.getElementById('message-input').addEventListener('input', () => {
+        sendTypingIndicator();
+    });
+    
+    document.getElementById('edit-profile-btn').addEventListener('click', () => {
+        showScreen('profileEdit');
+    });
+    
+    document.getElementById('profile-back-btn').addEventListener('click', () => {
+        showScreen('groupSelection');
+    });
+    
+    document.getElementById('save-profile-btn').addEventListener('click', saveProfile);
+    
+    document.getElementById('change-photo-btn').addEventListener('click', () => {
+        document.getElementById('photo-upload').click();
+    });
+    
+    document.getElementById('photo-upload').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const url = await uploadImage(file);
+            if (url) {
+                userPhoto = url;
+                document.getElementById('edit-photo-preview').src = url;
             }
-        });
-        
-        document.getElementById('refresh-chat-btn').addEventListener('click', () => {
-            scrollToBottom();
-        });
-        
-        document.getElementById('attach-btn').addEventListener('click', () => {
-            document.getElementById('image-upload').click();
-        });
-        
-        document.getElementById('image-upload').addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const optimisticImageMessage = {
+        }
+    });
+    
+    document.getElementById('attach-btn').addEventListener('click', () => {
+        document.getElementById('image-upload').click();
+    });
+    
+    document.getElementById('image-upload').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const url = await uploadImage(file);
+            if (url && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: 'message',
                     user_id: userId,
-                    user_name: userName,
-                    user_photo: userPhoto || '/static/images/default-avatar.svg',
-                    image_url: URL.createObjectURL(file),
-                    timestamp: new Date().toISOString()
-                };
-                
-                addMessage(optimisticImageMessage);
-                
-                const url = await uploadImage(file);
-                if (url && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({
-                        action: 'message',
-                        user_id: userId,
-                        group: currentGroup,
-                        image_url: url
-                    }));
-                }
+                    group: currentGroup,
+                    image_url: url
+                }));
             }
-        });
-        
-        console.log('All event listeners initialized successfully');
-    } catch (error) {
-        console.error('Error initializing GUPSHUP:', error);
-    }
+        }
+    });
 });
