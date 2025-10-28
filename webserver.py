@@ -1,3 +1,4 @@
+
 import os
 import json
 import asyncio
@@ -16,15 +17,7 @@ async def index(request):
     """Serve the main GUPSHUP page"""
     with open('templates/gupshup.html', 'r') as f:
         html_content = f.read()
-    return web.Response(
-        text=html_content, 
-        content_type='text/html',
-        headers={
-            'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
-            'Pragma': 'no-cache',
-            'Expires': '0'
-        }
-    )
+    return web.Response(text=html_content, content_type='text/html')
 
 def get_online_count(group_name):
     """Get number of users online in a group"""
@@ -92,7 +85,6 @@ async def websocket_handler(request):
                         broadcast_data = {
                             'type': 'new_message',
                             'message': {
-                                'user_id': user_id,
                                 'user_name': user.get('display_name', 'Anonymous'),
                                 'user_photo': user.get('photo_url', ''),
                                 'text': data.get('text'),
@@ -102,9 +94,7 @@ async def websocket_handler(request):
                             }
                         }
                         
-                        # Exclude sender from broadcast since they already have the optimistic message
-                        connection_key = f"{user_id}_{group_name}"
-                        await broadcast_to_group(group_name, broadcast_data, exclude=connection_key)
+                        await broadcast_to_group(group_name, broadcast_data)
                 
                 elif action == 'typing':
                     if user_id and group_name:
@@ -204,25 +194,20 @@ async def get_user_data(request):
     user_id = request.query.get('user_id')
     if user_id:
         try:
-            # Try to convert to int, but handle string IDs for testing
-            try:
-                user_id_key = int(user_id)
-            except ValueError:
-                user_id_key = user_id
-            
-            user = await get_gupshup_user(user_id_key)
+            user_id_int = int(user_id)
+            user = await get_gupshup_user(user_id_int)
             if user:
                 return web.json_response({
                     'user_id': user['_id'],
-                    'display_name': user.get('display_name', f'User{user_id_key}'),
+                    'display_name': user.get('display_name', f'User{user_id_int}'),
                     'photo_url': user.get('photo_url', ''),
                     'telegram_username': user.get('telegram_username', '')
                 })
             else:
-                await add_gupshup_user(user_id_key, None, f'User{user_id_key}', None)
+                await add_gupshup_user(user_id_int, None, f'User{user_id_int}', None)
                 return web.json_response({
-                    'user_id': user_id_key,
-                    'display_name': f'User{user_id_key}',
+                    'user_id': user_id_int,
+                    'display_name': f'User{user_id_int}',
                     'photo_url': '',
                     'telegram_username': ''
                 })
@@ -247,19 +232,9 @@ async def update_user_profile(request):
         print(f"Error updating profile: {e}")
         return web.json_response({'error': str(e)}, status=500)
 
-@web.middleware
-async def no_cache_middleware(request, handler):
-    """Add no-cache headers to prevent browser caching issues"""
-    response = await handler(request)
-    if request.path.startswith('/static/'):
-        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response.headers['Pragma'] = 'no-cache'
-        response.headers['Expires'] = '0'
-    return response
-
 async def create_app():
     """Create and configure the web application"""
-    app = web.Application(middlewares=[no_cache_middleware])
+    app = web.Application()
     
     app.router.add_get('/', index)
     app.router.add_get('/ws', websocket_handler)
