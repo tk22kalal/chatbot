@@ -8,18 +8,21 @@ from config import DB_URI, DB_NAME
 from datetime import datetime
 
 try:
-    if DB_URI and DB_URI.strip() and DB_URI not in ['', 'url']:
+    if DB_URI and DB_URI.strip() and DB_URI not in ['', 'url'] and (DB_URI.startswith('mongodb://') or DB_URI.startswith('mongodb+srv://')):
         dbclient = pymongo.MongoClient(DB_URI)
         database = dbclient[DB_NAME]
-        print("Connected to MongoDB successfully")
+        print("✅ Connected to MongoDB successfully")
     else:
-        print("WARNING: DATABASE_URL not configured. Using mock database for testing.")
+        if not DB_URI or DB_URI in ['', 'url']:
+            print("ℹ️  DATABASE_URL not configured. Using mock database for testing.")
+        else:
+            print(f"⚠️  Invalid DATABASE_URL format. Using mock database for testing.")
         from database.mock_db import MockDatabase
         database = MockDatabase()
         dbclient = None
 except Exception as e:
-    print(f"WARNING: Failed to connect to database: {e}")
-    print("Using mock database for testing.")
+    print(f"⚠️  Failed to connect to database: {e}")
+    print("ℹ️  Using mock database for testing.")
     from database.mock_db import MockDatabase
     database = MockDatabase()
     dbclient = None
@@ -46,8 +49,8 @@ async def present_user(user_id: int):
 async def add_user(user_id: int, username: str = None, first_name: str = None):
     user_data.insert_one({
         '_id': user_id,
-        'username': username,
-        'first_name': first_name,
+        'username': username or '',
+        'first_name': first_name or '',
         'gender': None,
         'partner_id': None,
         'searching': False,
@@ -67,7 +70,7 @@ async def set_user_searching(user_id: int, searching: bool):
     return
 
 async def set_user_partner(user_id: int, partner_id: int = None):
-    user_data.update_one({'_id': user_id}, {'$set': {'partner_id': partner_id}})
+    user_data.update_one({'_id': user_id}, {'$set': {'partner_id': partner_id if partner_id else None}})
     return
 
 async def get_searching_users():
@@ -162,8 +165,8 @@ async def add_gupshup_user(user_id: int, telegram_username: str = None, telegram
     if not existing_user:
         gupshup_users.insert_one({
             '_id': user_id,
-            'telegram_username': telegram_username,
-            'telegram_first_name': telegram_first_name,
+            'telegram_username': telegram_username or '',
+            'telegram_first_name': telegram_first_name or '',
             'display_name': telegram_first_name or telegram_username or f"User{user_id}",
             'photo_url': telegram_photo_url or '',
             'created_at': datetime.now()
@@ -177,9 +180,9 @@ async def get_gupshup_user(user_id: int):
 async def update_gupshup_profile(user_id: int, display_name: str = None, photo_url: str = None):
     """Update user's display name and/or photo"""
     update_data = {}
-    if display_name:
+    if display_name is not None:
         update_data['display_name'] = display_name
-    if photo_url:
+    if photo_url is not None:
         update_data['photo_url'] = photo_url
     
     if update_data:
