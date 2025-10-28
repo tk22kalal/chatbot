@@ -62,7 +62,6 @@ body {
     color: white;
     padding: 20px;
     text-align: center;
-    flex-shrink: 0;
 }
 
 .header h1 {
@@ -79,7 +78,6 @@ body {
     text-align: center;
     padding: 20px;
     background: var(--chat-bg);
-    flex-shrink: 0;
 }
 
 .profile-preview img {
@@ -105,7 +103,6 @@ body {
     padding: 15px 20px;
     background: var(--chat-bg);
     border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
 }
 
 .theme-btn {
@@ -125,27 +122,13 @@ body {
     color: white;
 }
 
-/* FIXED: Added scrollable container for groups */
-.groups-container {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
-
 .groups-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 15px;
     padding: 20px;
+    overflow-y: auto;
     flex: 1;
-}
-
-#group-selection {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
 }
 
 .group-btn {
@@ -173,7 +156,6 @@ body {
     background: var(--header-bg);
     color: white;
     box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    flex-shrink: 0;
 }
 
 .chat-header button {
@@ -306,7 +288,6 @@ body {
     background: var(--bg-color);
     border-top: 1px solid var(--border-color);
     gap: 8px;
-    flex-shrink: 0;
 }
 
 .icon-btn {
@@ -376,7 +357,6 @@ body {
     padding: 30px;
     overflow-y: auto;
     background: var(--bg-color);
-    flex: 1;
 }
 
 .photo-upload {
