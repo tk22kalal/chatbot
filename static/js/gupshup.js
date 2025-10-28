@@ -48,7 +48,25 @@ function loadTheme() {
     setTheme(savedTheme);
 }
 
-// Profile data is now stored in database per user ID, not localStorage
+// Profile data persistence using localStorage
+function saveProfileToLocalStorage() {
+    localStorage.setItem('gupshup-profile-name', userName || '');
+    localStorage.setItem('gupshup-profile-photo', userPhoto || '');
+}
+
+function loadProfileFromLocalStorage() {
+    const savedName = localStorage.getItem('gupshup-profile-name');
+    const savedPhoto = localStorage.getItem('gupshup-profile-photo');
+    
+    if (savedName) {
+        userName = savedName;
+    }
+    if (savedPhoto) {
+        userPhoto = savedPhoto;
+    }
+    
+    return { name: savedName, photo: savedPhoto };
+}
 
 function showScreen(screenName) {
     Object.values(screens).forEach(screen => screen.classList.remove('active'));
@@ -126,7 +144,7 @@ function updateOnlineCount(count) {
 function joinGroup(groupName) {
     currentGroup = groupName;
     document.getElementById('group-title').textContent = groupName;
-    document.getElementById('messages-container').innerHTML = '';
+    document.getElementById('messages-container').innerHTML = '<div class="loading-indicator">Loading messages...</div>';
     
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
@@ -212,7 +230,12 @@ function addMessage(message) {
 function displayMessageHistory(messages) {
     const container = document.getElementById('messages-container');
     container.innerHTML = '';
-    messages.forEach(msg => addMessage(msg));
+    
+    if (messages.length === 0) {
+        container.innerHTML = '<div class="empty-state">No messages yet. Be the first to say hi! 👋</div>';
+    } else {
+        messages.forEach(msg => addMessage(msg));
+    }
 }
 
 function showTypingIndicator(userName) {
@@ -247,17 +270,33 @@ function escapeHtml(text) {
 }
 
 async function loadUserData() {
+    const localProfile = loadProfileFromLocalStorage();
+    
+    if (localProfile.name) {
+        userName = localProfile.name;
+        userPhoto = localProfile.photo;
+        updateProfilePreview();
+    }
+    
     try {
         const response = await fetch(`/api/user?user_id=${userId}`);
         if (response.ok) {
             const data = await response.json();
-            userName = data.display_name;
-            userPhoto = data.photo_url;
+            
+            if (!localProfile.name) {
+                userName = data.display_name;
+                userPhoto = data.photo_url;
+                saveProfileToLocalStorage();
+            }
+            
             updateProfilePreview();
         }
     } catch (error) {
         console.error('Failed to load user data:', error);
-        userName = 'User' + userId;
+        if (!userName) {
+            userName = 'User' + userId;
+            saveProfileToLocalStorage();
+        }
         updateProfilePreview();
     }
 }
@@ -294,6 +333,8 @@ async function saveProfile() {
     
     if (newName) {
         userName = newName;
+        
+        saveProfileToLocalStorage();
         
         try {
             await fetch('/api/user/update', {
@@ -383,6 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (url) {
                 userPhoto = url;
                 document.getElementById('edit-photo-preview').src = url;
+                saveProfileToLocalStorage();
             }
         }
     });
