@@ -200,16 +200,28 @@ async def upload_image(request):
 async def get_user_data(request):
     """Get user data endpoint"""
     user_id = request.query.get('user_id')
+    tg_first_name = request.query.get('first_name', '').strip()
+    tg_username = request.query.get('username', '').strip()
+    tg_photo_url = request.query.get('photo_url', '').strip()
+
     if user_id:
         try:
-            # Try to convert to int, but handle string IDs for testing
             try:
                 user_id_key = int(user_id)
             except ValueError:
                 user_id_key = user_id
-            
+
             user = await get_gupshup_user(user_id_key)
             if user:
+                current_name = user.get('display_name', '')
+                is_default_name = not current_name or current_name == f'User{user_id_key}'
+
+                if tg_first_name and is_default_name:
+                    new_photo = tg_photo_url or user.get('photo_url', '')
+                    await update_gupshup_profile(user_id_key, tg_first_name, new_photo)
+                    user['display_name'] = tg_first_name
+                    user['photo_url'] = new_photo
+
                 return web.json_response({
                     'user_id': user['_id'],
                     'display_name': user.get('display_name', f'User{user_id_key}'),
@@ -217,12 +229,13 @@ async def get_user_data(request):
                     'telegram_username': user.get('telegram_username', '')
                 })
             else:
-                await add_gupshup_user(user_id_key, '', f'User{user_id_key}', '')
+                display_name = tg_first_name or f'User{user_id_key}'
+                await add_gupshup_user(user_id_key, tg_username, display_name, tg_photo_url)
                 return web.json_response({
                     'user_id': user_id_key,
-                    'display_name': f'User{user_id_key}',
-                    'photo_url': '',
-                    'telegram_username': ''
+                    'display_name': display_name,
+                    'photo_url': tg_photo_url,
+                    'telegram_username': tg_username
                 })
         except Exception as e:
             print(f"Error in get_user_data: {e}")
