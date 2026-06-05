@@ -120,11 +120,21 @@ function handleWebSocketMessage(data) {
             showTypingIndicator(data.user_name);
             break;
         case 'profile_updated':
-            if (data.user_id === userId) {
+            if (String(data.user_id) === String(userId)) {
                 userName = data.name;
                 userPhoto = data.photo;
                 updateProfilePreview();
             }
+            // Update any visible messages from this user in the current chat
+            document.querySelectorAll('.message').forEach(msgEl => {
+                const msgUserId = msgEl.dataset.userId;
+                if (msgUserId && String(msgUserId) === String(data.user_id)) {
+                    const nameEl = msgEl.querySelector('.message-name');
+                    const avatarEl = msgEl.querySelector('.message-avatar');
+                    if (nameEl) nameEl.textContent = data.name;
+                    if (avatarEl && data.photo) avatarEl.src = data.photo;
+                }
+            });
             break;
     }
 }
@@ -185,7 +195,8 @@ function addMessage(message) {
     
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message';
-    
+    messageDiv.dataset.userId = String(message.user_id);
+
     if (String(message.user_id) === String(userId)) {
         messageDiv.classList.add('own');
     }
@@ -264,6 +275,12 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+function isDefaultName(name, uid) {
+    if (!name) return true;
+    // matches "User123456" or "User123456789" patterns
+    return /^User\d+$/.test(name);
+}
+
 async function loadUserData() {
     try {
         const tgUser = getTelegramUser();
@@ -280,12 +297,18 @@ async function loadUserData() {
             userName = data.display_name;
             userPhoto = data.photo_url;
             updateProfilePreview();
+
+            // If name is still the default placeholder, auto-open profile editor
+            if (isDefaultName(userName, userId)) {
+                showScreen('profileEdit');
+            }
         }
     } catch (error) {
         console.error('Failed to load user data:', error);
         userName = 'User' + userId;
         userPhoto = '';
         updateProfilePreview();
+        showScreen('profileEdit');
     }
 }
 
@@ -318,30 +341,42 @@ async function uploadImage(file) {
 
 async function saveProfile() {
     const newName = document.getElementById('display-name-input').value.trim();
-    
-    if (newName) {
-        userName = newName;
-        
-        try {
-            await fetch('/api/user/update', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    user_id: userId,
-                    display_name: userName,
-                    photo_url: userPhoto
-                })
-            });
-            
-            // Profile saved to server successfully
-            updateProfilePreview();
-            showScreen('groupSelection');
-        } catch (error) {
-            console.error('Failed to update profile:', error);
-            alert('Failed to save profile. Please try again.');
+
+    if (!newName) {
+        alert('Please enter a name.');
+        return;
+    }
+
+    const saveBtn = document.getElementById('save-profile-btn');
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+
+    try {
+        const response = await fetch('/api/user/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                display_name: newName,
+                photo_url: userPhoto || ''
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || result.error) {
+            throw new Error(result.error || 'Server error');
         }
+
+        userName = newName;
+        updateProfilePreview();
+        showScreen('groupSelection');
+    } catch (error) {
+        console.error('Failed to update profile:', error);
+        alert('Failed to save profile: ' + error.message + '. Please try again.');
+    } finally {
+        saveBtn.textContent = 'Save Profile';
+        saveBtn.disabled = false;
     }
 }
 
