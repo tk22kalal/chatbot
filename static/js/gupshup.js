@@ -71,23 +71,36 @@ function showScreen(screenName) {
 function initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws`;
-    
+
     ws = new WebSocket(wsUrl);
-    
+
     ws.onopen = () => {
         console.log('WebSocket connected');
+        // Re-join current group if user was already in one (handles reconnects)
+        if (currentGroup && userId) {
+            ws.send(JSON.stringify({
+                action: 'join',
+                user_id: userId,
+                group: currentGroup
+            }));
+        }
     };
-    
+
     ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleWebSocketMessage(data);
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            console.error('Failed to parse WS message:', e);
+        }
     };
-    
+
     ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        setTimeout(initWebSocket, 3000);
+        console.log('WebSocket disconnected — reconnecting in 2s');
+        ws = null;
+        setTimeout(initWebSocket, 2000);
     };
-    
+
     ws.onerror = (error) => {
         console.error('WebSocket error:', error);
     };
@@ -146,20 +159,29 @@ function updateOnlineCount(count) {
     }
 }
 
-function joinGroup(groupName) {
-    currentGroup = groupName;
-    document.getElementById('group-title').textContent = groupName;
-    document.getElementById('messages-container').innerHTML = '<div class="loading-indicator">Loading messages...</div>';
-    
-    if (ws && ws.readyState === WebSocket.OPEN) {
+function sendJoinGroup(groupName) {
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        // Socket is gone — reconnect; onopen will re-join automatically
+        initWebSocket();
+        return;
+    }
+    if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
             action: 'join',
             user_id: userId,
             group: groupName
         }));
+    } else {
+        // Still CONNECTING — wait for it to open; onopen handles the join
     }
-    
+}
+
+function joinGroup(groupName) {
+    currentGroup = groupName;
+    document.getElementById('group-title').textContent = groupName;
+    document.getElementById('messages-container').innerHTML = '<div class="loading-indicator">Loading messages...</div>';
     showScreen('chatScreen');
+    sendJoinGroup(groupName);
 }
 
 function sendMessage() {
@@ -408,6 +430,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     document.getElementById('back-btn').addEventListener('click', () => {
         if (currentGroup) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    action: 'leave',
+                    user_id: userId,
+                    group: currentGroup
+                }));
+            }
             currentGroup = null;
             showScreen('groupSelection');
         }
