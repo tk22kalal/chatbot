@@ -246,14 +246,32 @@ async def update_user_profile(request):
     try:
         data = await request.json()
         user_id = data.get('user_id')
-        display_name = data.get('display_name')
-        photo_url = data.get('photo_url')
-        
-        if user_id:
-            await update_gupshup_profile(int(user_id), display_name, photo_url)
-            return web.json_response({'success': True})
-        
-        return web.json_response({'error': 'Missing user_id'}, status=400)
+        display_name = data.get('display_name', '').strip()
+        photo_url = data.get('photo_url', '')
+
+        if not user_id:
+            return web.json_response({'error': 'Missing user_id'}, status=400)
+
+        # Normalize user_id: use int for Telegram users, keep string for test users
+        try:
+            user_id_key = int(user_id)
+        except (ValueError, TypeError):
+            user_id_key = user_id
+
+        if not display_name:
+            return web.json_response({'error': 'display_name cannot be empty'}, status=400)
+
+        await update_gupshup_profile(user_id_key, display_name, photo_url)
+
+        # Broadcast profile update to all connected users in real-time
+        await broadcast_to_all({
+            'type': 'profile_updated',
+            'user_id': str(user_id_key),
+            'name': display_name,
+            'photo': photo_url
+        })
+
+        return web.json_response({'success': True, 'display_name': display_name})
     except Exception as e:
         print(f"Error updating profile: {e}")
         return web.json_response({'error': str(e)}, status=500)
