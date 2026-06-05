@@ -5,7 +5,7 @@ from config import PORT
 from database.database import add_gupshup_user
 import os
 
-@Bot.on_message(filters.command('group') & filters.private)
+@Bot.on_message(filters.command(['group', 'gupshup']) & filters.private)
 async def group_command(client: Bot, message: Message):
     """Handle /group command - show GUPSHUP button"""
     user_id = message.from_user.id
