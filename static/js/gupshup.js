@@ -12,15 +12,19 @@ const screens = {
     profileEdit: document.getElementById('profile-edit')
 };
 
-function getUserIdFromTelegram() {
+function getTelegramUser() {
     if (window.Telegram && window.Telegram.WebApp) {
         const tg = window.Telegram.WebApp;
         tg.expand();
-        const user = tg.initDataUnsafe.user;
-        if (user && user.id) {
-            // ALWAYS use fresh Telegram ID - never use cached values for Telegram users
-            return user.id;
-        }
+        return tg.initDataUnsafe.user || null;
+    }
+    return null;
+}
+
+function getUserIdFromTelegram() {
+    const tgUser = getTelegramUser();
+    if (tgUser && tgUser.id) {
+        return tgUser.id;
     }
     
     // Only for testing outside Telegram - use a persistent ID from localStorage
@@ -261,10 +265,16 @@ function escapeHtml(text) {
 }
 
 async function loadUserData() {
-    // ALWAYS fetch fresh profile from server - no caching
-    // This ensures all messages show the latest profile
     try {
-        const response = await fetch(`/api/user?user_id=${userId}`);
+        const tgUser = getTelegramUser();
+        let url = `/api/user?user_id=${userId}`;
+        if (tgUser) {
+            const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
+            if (fullName) url += `&first_name=${encodeURIComponent(fullName)}`;
+            if (tgUser.username) url += `&username=${encodeURIComponent(tgUser.username)}`;
+            if (tgUser.photo_url) url += `&photo_url=${encodeURIComponent(tgUser.photo_url)}`;
+        }
+        const response = await fetch(url);
         if (response.ok) {
             const data = await response.json();
             userName = data.display_name;
