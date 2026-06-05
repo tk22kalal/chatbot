@@ -44,9 +44,19 @@ async def try_match_users(client: Bot, user_id: int, user: dict):
         )
         
         # Notify both users
-        chat_keyboard = ReplyKeyboardMarkup([
-            [KeyboardButton("/next"), KeyboardButton("/stop")]
-        ], resize_keyboard=True)
+        webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+        if webapp_url and not webapp_url.startswith("http"):
+            webapp_url = f"https://{webapp_url}"
+        
+        if webapp_url:
+            chat_keyboard = ReplyKeyboardMarkup([
+                [KeyboardButton("/next"), KeyboardButton("/stop")],
+                [KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+            ], resize_keyboard=True)
+        else:
+            chat_keyboard = ReplyKeyboardMarkup([
+                [KeyboardButton("/next"), KeyboardButton("/stop")]
+            ], resize_keyboard=True)
         
         # Send to both users
         await client.send_message(user_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
@@ -87,7 +97,20 @@ async def search_partner(client: Bot, message: Message):
     
     if not matched:
         # No partner available - user is now in queue
-        await message.reply_text(SEARCHING_MSG)
+        webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
+        if webapp_url and not webapp_url.startswith("http"):
+            webapp_url = f"https://{webapp_url}"
+        
+        if webapp_url:
+            searching_keyboard = ReplyKeyboardMarkup([
+                [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+            ], resize_keyboard=True)
+        else:
+            searching_keyboard = ReplyKeyboardMarkup([
+                [KeyboardButton("🔎 Find Partner")]
+            ], resize_keyboard=True)
+        
+        await message.reply_text(SEARCHING_MSG, reply_markup=searching_keyboard)
 
 # Stop current chat - /stop command
 @Bot.on_message(filters.command('stop') & filters.private & ~filters.user(ADMINS))
@@ -198,7 +221,7 @@ async def next_partner(client: Bot, message: Message):
         await message.reply_text(SEARCHING_MSG)
 
 # Handle all messages (forward to partner) - ANONYMOUSLY
-@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users', 'group', 'broadcast', 'stats']) & ~filters.user(ADMINS))
+@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users', 'group', 'gupshup', 'broadcast', 'stats']) & ~filters.user(ADMINS))
 async def handle_messages(client: Bot, message: Message):
     user_id = message.from_user.id
     user = await get_user(user_id)
