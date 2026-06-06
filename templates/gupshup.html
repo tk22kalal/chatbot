@@ -1,91 +1,205 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>GUPSHUP - Group Chat</title>
-    <link rel="stylesheet" href="/static/css/gupshup.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#6c63ff">
+  <title>GUPSHUP — Group Chat</title>
+  <link rel="stylesheet" href="/static/css/gupshup.css">
 </head>
 <body>
-    <div id="app">
-        <div id="group-selection" class="screen active">
-            <div class="header">
-                <h1>🗣 GUPSHUP</h1>
-                <p>Choose a group to join</p>
-            </div>
-            
-            <div class="gupshup-content">
-                <div class="profile-preview">
-                    <img id="preview-photo" src="/static/images/default-avatar.svg" alt="Profile">
-                    <p id="preview-name">Loading...</p>
-                    <button id="edit-profile-btn" class="btn-secondary">Edit Profile</button>
-                </div>
-                
-                <div class="theme-selector">
-                    <button class="theme-btn active" data-theme-btn="light">☀️ Light</button>
-                    <button class="theme-btn" data-theme-btn="dark">🌙 Dark</button>
-                </div>
-                
-                <div class="groups-grid">
-                    <button class="group-btn" data-group="ENGINEER">👨‍💻 ENGINEER</button>
-                    <button class="group-btn" data-group="CIVIL">🏗️ CIVIL</button>
-                    <button class="group-btn" data-group="DOCTOR">⚕️ DOCTOR</button>
-                    <button class="group-btn" data-group="12TH">📚 12TH</button>
-                    <button class="group-btn" data-group="11TH">📖 11TH</button>
-                    <button class="group-btn" data-group="10TH">📝 10TH</button>
-                    <button class="group-btn" data-group="9TH">✏️ 9TH</button>
-                    <button class="group-btn" data-group="8TH">📓 8TH</button>
-                </div>
-            </div>
-        </div>
 
-        <div id="chat-screen" class="screen">
-            <div class="chat-header">
-                <button id="back-btn">←</button>
-                <div class="header-info">
-                    <h2 id="group-title">GROUP NAME</h2>
-                    <p id="online-count">0 members online</p>
-                </div>
-                <button id="refresh-chat-btn" title="Refresh chat">🔄</button>
-            </div>
-            
-            <div id="messages-container"></div>
-            
-            <div id="typing-indicator" class="typing-indicator" style="display: none;">
-                <span></span> is typing...
-            </div>
-            
-            <div class="chat-input-container">
-                <input type="file" id="image-upload" accept="image/*" style="display: none;">
-                <button id="attach-btn" class="icon-btn">📷</button>
-                <input type="text" id="message-input" placeholder="Type a message...">
-                <button id="send-btn" class="btn-primary">➤</button>
-            </div>
-        </div>
+<!-- ── Toast container ──────────────────────────── -->
+<div class="toast-container" id="toast-container"></div>
 
-        <div id="profile-edit" class="screen">
-            <div class="header">
-                <button id="profile-back-btn">←</button>
-                <h2>Edit Profile</h2>
-                <button id="save-profile-btn" class="btn-text">Save</button>
-            </div>
-            
-            <div class="profile-editor">
-                <div class="photo-upload">
-                    <img id="edit-photo-preview" src="/static/images/default-avatar.svg" alt="Profile Photo">
-                    <input type="file" id="photo-upload" accept="image/*" style="display: none;">
-                    <button id="change-photo-btn" class="btn-secondary">Change Photo</button>
-                </div>
-                
-                <div class="form-group">
-                    <label>Display Name</label>
-                    <input type="text" id="display-name-input" placeholder="Enter your name">
-                </div>
-            </div>
-        </div>
+<!-- ── Image lightbox ───────────────────────────── -->
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightbox-close">✕</button>
+  <img id="lightbox-img" src="" alt="Full image">
+</div>
 
+<!-- ── Profile drawer overlay ───────────────────── -->
+<div class="drawer-overlay" id="drawer-overlay"></div>
+
+<!-- ── Profile drawer (slides from right) ───────── -->
+<div class="profile-drawer" id="profile-drawer">
+  <div class="drawer-header">
+    <span class="drawer-title">My Profile</span>
+    <button class="drawer-close-btn" id="drawer-close-btn">✕</button>
+  </div>
+
+  <div class="drawer-body">
+    <!-- Avatar -->
+    <div class="drawer-avatar-wrap" id="avatar-edit-wrap">
+      <img id="edit-photo-preview" class="drawer-avatar-img" src="/static/images/default-avatar.svg" alt="Photo">
+      <div class="drawer-avatar-overlay">📷</div>
+    </div>
+    <div class="drawer-avatar-hint">Tap to change photo</div>
+    <input type="file" id="photo-upload" accept="image/*" style="display:none">
+
+    <!-- Name -->
+    <div class="drawer-field">
+      <label class="drawer-label">Display Name</label>
+      <input type="text" id="display-name-input" class="drawer-input" placeholder="Enter your name…" maxlength="30">
     </div>
 
-    <script src="/static/js/gupshup.js"></script>
+    <!-- Theme toggle -->
+    <div class="drawer-field">
+      <label class="drawer-label">Appearance</label>
+      <div class="theme-toggle-pill">
+        <button class="theme-toggle-btn active" data-theme-btn="light">☀️ Light</button>
+        <button class="theme-toggle-btn" data-theme-btn="dark">🌙 Dark</button>
+      </div>
+    </div>
+
+    <!-- Save -->
+    <button class="drawer-save-btn" id="save-profile-btn">Save Changes</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════
+     APP
+════════════════════════════════════════════════ -->
+<div id="app">
+
+  <!-- ╔══════════════════════════════════╗
+       ║  SCREEN 1 – GROUP SELECTION     ║
+       ╚══════════════════════════════════╝ -->
+  <div id="group-selection" class="screen active">
+
+    <!-- Top navbar -->
+    <div class="home-nav">
+      <div class="home-nav-brand">
+        <div class="home-nav-icon">💬</div>
+        <span class="home-nav-title">GUPSHUP</span>
+      </div>
+      <button class="profile-trigger" id="profile-trigger" aria-label="Open profile">
+        <img id="preview-photo" class="profile-trigger-avatar" src="/static/images/default-avatar.svg" alt="Profile">
+        <div class="profile-trigger-dot"></div>
+      </button>
+    </div>
+
+    <!-- Hero strip -->
+    <div class="home-hero">
+      <div class="home-hero-orb1"></div>
+      <div class="home-hero-orb2"></div>
+      <p class="home-hero-text">Pick a group and start chatting anonymously 🚀</p>
+      <p class="home-hero-name" id="preview-name">Loading…</p>
+    </div>
+
+    <!-- Section label -->
+    <div class="section-heading">Choose a group</div>
+
+    <!-- Groups — full remaining height, scrolls in Y -->
+    <div class="groups-grid" id="groups-grid">
+      <button class="group-card" data-group="ENGINEER" style="--g-c1:#6c63ff;--g-c2:#818cf8;--g-shadow:rgba(108,99,255,.4)">
+        <div class="group-card-icon">👨‍💻</div>
+        <div class="group-card-name">ENGINEER</div>
+        <div class="group-card-badge">Tech & Coding</div>
+      </button>
+      <button class="group-card" data-group="CIVIL" style="--g-c1:#0ea5e9;--g-c2:#38bdf8;--g-shadow:rgba(14,165,233,.4)">
+        <div class="group-card-icon">🏗️</div>
+        <div class="group-card-name">CIVIL</div>
+        <div class="group-card-badge">Architecture</div>
+      </button>
+      <button class="group-card" data-group="DOCTOR" style="--g-c1:#f43f5e;--g-c2:#fb7185;--g-shadow:rgba(244,63,94,.4)">
+        <div class="group-card-icon">⚕️</div>
+        <div class="group-card-name">DOCTOR</div>
+        <div class="group-card-badge">Medical</div>
+      </button>
+      <button class="group-card" data-group="12TH" style="--g-c1:#f59e0b;--g-c2:#fbbf24;--g-shadow:rgba(245,158,11,.4)">
+        <div class="group-card-icon">📚</div>
+        <div class="group-card-name">12TH</div>
+        <div class="group-card-badge">Board Prep</div>
+      </button>
+      <button class="group-card" data-group="11TH" style="--g-c1:#10b981;--g-c2:#34d399;--g-shadow:rgba(16,185,129,.4)">
+        <div class="group-card-icon">📖</div>
+        <div class="group-card-name">11TH</div>
+        <div class="group-card-badge">Science & Arts</div>
+      </button>
+      <button class="group-card" data-group="10TH" style="--g-c1:#8b5cf6;--g-c2:#a78bfa;--g-shadow:rgba(139,92,246,.4)">
+        <div class="group-card-icon">📝</div>
+        <div class="group-card-name">10TH</div>
+        <div class="group-card-badge">Board Exam</div>
+      </button>
+      <button class="group-card" data-group="9TH" style="--g-c1:#ec4899;--g-c2:#f472b6;--g-shadow:rgba(236,72,153,.4)">
+        <div class="group-card-icon">✏️</div>
+        <div class="group-card-name">9TH</div>
+        <div class="group-card-badge">Foundation</div>
+      </button>
+      <button class="group-card" data-group="8TH" style="--g-c1:#14b8a6;--g-c2:#2dd4bf;--g-shadow:rgba(20,184,166,.4)">
+        <div class="group-card-icon">📓</div>
+        <div class="group-card-name">8TH</div>
+        <div class="group-card-badge">Middle School</div>
+      </button>
+    </div>
+
+  </div><!-- /group-selection -->
+
+
+  <!-- ╔══════════════════════════════════╗
+       ║  SCREEN 2 – CHAT                ║
+       ╚══════════════════════════════════╝ -->
+  <div id="chat-screen" class="screen">
+
+    <!-- Connection warning -->
+    <div class="conn-banner" id="conn-banner">
+      <span class="conn-dot"></span> Reconnecting…
+    </div>
+
+    <!-- Header -->
+    <div class="chat-header">
+      <button class="btn-back" id="back-btn" aria-label="Back">←</button>
+      <div class="chat-header-avatar-wrap">
+        <img class="chat-header-avatar" id="group-avatar" src="/static/images/default-avatar.svg" alt="">
+        <div class="chat-header-dot"></div>
+      </div>
+      <div class="chat-header-info">
+        <div class="chat-header-title" id="group-title">GROUP</div>
+        <div class="chat-header-status" id="online-count">● online</div>
+      </div>
+      <div class="header-actions">
+        <button class="btn-icon" id="refresh-btn" title="Scroll to latest">⬇</button>
+        <button class="btn-icon" id="members-btn" title="Members">👥</button>
+      </div>
+    </div>
+
+    <!-- Messages -->
+    <div id="messages-container"></div>
+
+    <!-- Typing bar -->
+    <div class="typing-bar" id="typing-bar">
+      <div class="typing-dots"><span></span><span></span><span></span></div>
+      <span id="typing-text">Someone is typing</span>
+    </div>
+
+    <!-- Scroll-to-bottom FAB -->
+    <button class="btn-scroll-bottom" id="scroll-bottom-btn">⬇</button>
+
+    <!-- Emoji picker -->
+    <div class="emoji-picker-container" id="emoji-picker">
+      <div class="emoji-grid" id="emoji-grid"></div>
+    </div>
+
+    <!-- Input bar -->
+    <div class="chat-input-bar">
+      <input type="file" id="image-upload" accept="image/*" style="display:none">
+      <button class="btn-attach" id="attach-btn" aria-label="Attach image">📷</button>
+      <div class="input-wrap">
+        <textarea id="message-input" rows="1" placeholder="Type a message…" autocomplete="off" autocorrect="on"></textarea>
+        <button class="btn-emoji" id="emoji-btn" aria-label="Emoji">😊</button>
+      </div>
+      <button class="btn-send" id="send-btn" aria-label="Send">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>
+
+  </div><!-- /chat-screen -->
+
+</div><!-- /#app -->
+
+<script src="/static/js/gupshup.js"></script>
 </body>
 </html>
