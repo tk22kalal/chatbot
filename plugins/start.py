@@ -9,6 +9,16 @@ from bot import Bot
 from config import ADMINS, START_MSG
 from database.database import add_user, present_user, get_user, update_user_gender, full_userbase, get_total_chats, get_active_chats
 
+
+def _get_webapp_url() -> str | None:
+    """Return a clean https:// webapp URL, or None if not set."""
+    url = (os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN") or "").strip().rstrip("/")
+    if not url:
+        return None
+    if not url.startswith("http"):
+        url = f"https://{url}"
+    return url
+
 # Start Command - Ask for gender if new user
 @Bot.on_message(filters.command('start') & filters.private)
 async def start_command(client: Client, message: Message):
@@ -39,9 +49,7 @@ async def start_command(client: Client, message: Message):
         )
     else:
         # User already has gender - show search keyboard with GUPSHUP
-        webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
-        if webapp_url and not webapp_url.startswith("http"):
-            webapp_url = f"https://{webapp_url}"
+        webapp_url = _get_webapp_url()
         
         if webapp_url:
             search_keyboard = ReplyKeyboardMarkup([
@@ -67,10 +75,8 @@ async def gender_callback(client: Client, callback_query: CallbackQuery):
     await update_user_gender(user_id, gender)
     
     # Show search keyboard with GUPSHUP
-    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
-    if webapp_url and not webapp_url.startswith("http"):
-        webapp_url = f"https://{webapp_url}"
-    
+    webapp_url = _get_webapp_url()
+
     if webapp_url:
         search_keyboard = ReplyKeyboardMarkup([
             [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
