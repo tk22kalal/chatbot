@@ -5,6 +5,27 @@ import asyncio
 from datetime import datetime
 from aiohttp import web, WSMsgType
 from config import PORT
+
+# ── Absolute URL helper ───────────────────────────────────────────────────────
+def _abs_photo_url(photo_url: str) -> str:
+    """
+    Convert a legacy relative photo_url (e.g. /static/uploads/x.jpg) to an
+    absolute URL using WEB_URL so old MongoDB records work in Telegram WebView.
+    Already-absolute URLs and empty strings are returned unchanged.
+    """
+    if not photo_url:
+        return photo_url
+    if photo_url.startswith("http"):
+        return photo_url
+    # Relative path — prefix with the public base URL
+    base = (os.environ.get("WEB_URL") or "").strip().rstrip("/")
+    if not base:
+        return photo_url          # Can't fix without WEB_URL — return as-is
+    if not base.startswith("http"):
+        base = f"https://{base}"
+    return f"{base}{photo_url}"
+
+
 from database.database import (
     add_gupshup_user, get_gupshup_user, update_gupshup_profile,
     save_gupshup_message, get_group_messages
@@ -322,14 +343,17 @@ async def get_user_data(request):
         if user:
             current_name = user.get('display_name', '')
             is_default   = not current_name or current_name == f'User{user_id_key}'
+            # Normalise any legacy relative photo_url to absolute on the fly
+            stored_photo = _abs_photo_url(user.get('photo_url', ''))
             if tg_first_name and is_default:
-                new_photo = tg_photo_url or user.get('photo_url', '')
+                new_photo = tg_photo_url or stored_photo
                 await update_gupshup_profile(user_id_key, tg_first_name, new_photo)
                 _cache_set(user_id_key, tg_first_name, new_photo)
                 user['display_name'] = tg_first_name
                 user['photo_url']    = new_photo
             else:
-                _cache_set(user_id_key, user.get('display_name', ''), user.get('photo_url', ''))
+                user['photo_url'] = stored_photo
+                _cache_set(user_id_key, user.get('display_name', ''), stored_photo)
 
             return web.json_response({
                 'user_id':           user['_id'],
@@ -339,12 +363,13 @@ async def get_user_data(request):
             })
         else:
             display_name = tg_first_name or f'User{user_id_key}'
-            await add_gupshup_user(user_id_key, tg_username, display_name, tg_photo_url)
-            _cache_set(user_id_key, display_name, tg_photo_url)
+            photo        = _abs_photo_url(tg_photo_url)
+            await add_gupshup_user(user_id_key, tg_username, display_name, photo)
+            _cache_set(user_id_key, display_name, photo)
             return web.json_response({
                 'user_id':           user_id_key,
                 'display_name':      display_name,
-                'photo_url':         tg_photo_url,
+                'photo_url':         photo,
                 'telegram_username': tg_username
             })
 
