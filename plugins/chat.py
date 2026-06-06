@@ -15,6 +15,33 @@ from database.database import (
     log_chat_start, log_message, end_chat
 )
 
+
+def _get_webapp_url() -> str | None:
+    """Return a clean https:// webapp URL, or None if not set."""
+    url = (os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN") or "").strip().rstrip("/")
+    if not url:
+        return None
+    if not url.startswith("http"):
+        url = f"https://{url}"
+    return url
+
+
+def _chat_keyboard(webapp_url: str | None) -> ReplyKeyboardMarkup:
+    if webapp_url:
+        return ReplyKeyboardMarkup([
+            [KeyboardButton("/next"), KeyboardButton("/stop")],
+            [KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+        ], resize_keyboard=True)
+    return ReplyKeyboardMarkup([[KeyboardButton("/next"), KeyboardButton("/stop")]], resize_keyboard=True)
+
+
+def _search_keyboard(webapp_url: str | None) -> ReplyKeyboardMarkup:
+    if webapp_url:
+        return ReplyKeyboardMarkup([
+            [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
+        ], resize_keyboard=True)
+    return ReplyKeyboardMarkup([[KeyboardButton("🔎 Find Partner")]], resize_keyboard=True)
+
 async def try_match_users(client: Bot, user_id: int, user: dict):
     """Attempt to match a user with an available partner"""
     # Get all searching users (excluding current user)
@@ -44,20 +71,8 @@ async def try_match_users(client: Bot, user_id: int, user: dict):
         )
         
         # Notify both users
-        webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
-        if webapp_url and not webapp_url.startswith("http"):
-            webapp_url = f"https://{webapp_url}"
-        
-        if webapp_url:
-            chat_keyboard = ReplyKeyboardMarkup([
-                [KeyboardButton("/next"), KeyboardButton("/stop")],
-                [KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
-            ], resize_keyboard=True)
-        else:
-            chat_keyboard = ReplyKeyboardMarkup([
-                [KeyboardButton("/next"), KeyboardButton("/stop")]
-            ], resize_keyboard=True)
-        
+        chat_keyboard = _chat_keyboard(_get_webapp_url())
+
         # Send to both users
         await client.send_message(user_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
         await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
@@ -97,20 +112,7 @@ async def search_partner(client: Bot, message: Message):
     
     if not matched:
         # No partner available - user is now in queue
-        webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
-        if webapp_url and not webapp_url.startswith("http"):
-            webapp_url = f"https://{webapp_url}"
-        
-        if webapp_url:
-            searching_keyboard = ReplyKeyboardMarkup([
-                [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
-            ], resize_keyboard=True)
-        else:
-            searching_keyboard = ReplyKeyboardMarkup([
-                [KeyboardButton("🔎 Find Partner")]
-            ], resize_keyboard=True)
-        
-        await message.reply_text(SEARCHING_MSG, reply_markup=searching_keyboard)
+        await message.reply_text(SEARCHING_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
 
 # Stop current chat - /stop command
 @Bot.on_message(filters.command('stop') & filters.private & ~filters.user(ADMINS))
@@ -149,19 +151,7 @@ async def stop_chat(client: Bot, message: Message):
     await clear_user_chat_state(partner_id)
     
     # Notify both users with GUPSHUP button
-    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
-    if webapp_url and not webapp_url.startswith("http"):
-        webapp_url = f"https://{webapp_url}"
-    
-    if webapp_url:
-        search_keyboard = ReplyKeyboardMarkup([
-            [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
-        ], resize_keyboard=True)
-    else:
-        search_keyboard = ReplyKeyboardMarkup([
-            [KeyboardButton("🔎 Find Partner")]
-        ], resize_keyboard=True)
-    
+    search_keyboard = _search_keyboard(_get_webapp_url())
     await message.reply_text(STOPPED_CHAT_MSG, reply_markup=search_keyboard)
     await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_keyboard)
 
@@ -197,20 +187,7 @@ async def next_partner(client: Bot, message: Message):
     await clear_user_chat_state(partner_id)
     
     # Notify partner with GUPSHUP button
-    webapp_url = os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN")
-    if webapp_url and not webapp_url.startswith("http"):
-        webapp_url = f"https://{webapp_url}"
-    
-    if webapp_url:
-        search_keyboard = ReplyKeyboardMarkup([
-            [KeyboardButton("🔎 Find Partner"), KeyboardButton("🗣 GUPSHUP", web_app=WebAppInfo(url=webapp_url))]
-        ], resize_keyboard=True)
-    else:
-        search_keyboard = ReplyKeyboardMarkup([
-            [KeyboardButton("🔎 Find Partner")]
-        ], resize_keyboard=True)
-    
-    await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_keyboard)
+    await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
     
     # Automatically search for new partner for current user
     await set_user_searching(user_id, True)
