@@ -168,15 +168,19 @@ img { user-select:none; -webkit-user-drag:none; }
 ══════════════════════════════════════════════════════ */
 .groups-grid {
   flex: 1;
-  overflow-y: auto;
+  /* min-height:0 is required for a flex child to shrink and scroll */
+  min-height: 0;
+  overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 12px;
-  padding: 14px 14px 24px;
+  padding: 14px 14px 32px;
   align-content: start;
-  /* smooth momentum scroll on iOS */
   scroll-behavior: smooth;
+  /* make the whole grid area touchable / draggable on mobile */
+  touch-action: pan-y;
 }
 
 .group-card {
