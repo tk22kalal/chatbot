@@ -195,38 +195,49 @@ async def save_gupshup_message(message_data: dict):
     return
 
 async def get_group_messages(group_name: str, limit: int = 50):
-    """Get recent messages from a group (auto-deletes messages older than 2 days)
-    Always fetches the user's CURRENT profile (name and photo) instead of the stored one
-    so that when users update their profile, all their past messages show the new profile"""
+    """Get recent messages from a group.
+    Auto-deletes messages older than 2 days.
+    Uses a single batch user lookup instead of N individual queries.
+    """
     from datetime import timedelta
-    
+
     two_days_ago = datetime.now() - timedelta(days=2)
     gupshup_messages.delete_many({'group': group_name, 'timestamp': {'$lt': two_days_ago}})
-    
-    messages = gupshup_messages.find({'group': group_name}).sort('timestamp', -1).limit(limit)
-    
+
+    messages = list(
+        gupshup_messages.find({'group': group_name}).sort('timestamp', -1).limit(limit)
+    )
+
+    if not messages:
+        return []
+
+    # Collect unique user IDs and batch-fetch all profiles in ONE query
+    unique_ids = list({msg['user_id'] for msg in messages})
+    try:
+        user_docs = gupshup_users.find({'_id': {'$in': unique_ids}})
+        users = {u['_id']: u for u in user_docs}
+    except Exception:
+        # Fallback: individual lookups (for DB backends that don't support $in)
+        users = {}
+        for uid in unique_ids:
+            u = gupshup_users.find_one({'_id': uid})
+            if u:
+                users[uid] = u
+
     result = []
     for msg in messages:
-        user_id = msg['user_id']
-        current_user = await get_gupshup_user(user_id)
-        
-        if current_user:
-            user_name = current_user.get('display_name', f'User{user_id}')
-            user_photo = current_user.get('photo_url', '')
-        else:
-            user_name = f'User{user_id}'
-            user_photo = ''
-        
+        uid = msg['user_id']
+        u = users.get(uid, {})
         result.append({
-            'user_id': user_id,
-            'user_name': user_name,
-            'user_photo': user_photo,
-            'text': msg.get('text', ''),
-            'image_url': msg.get('image_url', ''),
-            'gif_url': msg.get('gif_url', ''),
-            'timestamp': msg['timestamp'].isoformat()
+            'user_id':   uid,
+            'user_name':  u.get('display_name', f'User{uid}'),
+            'user_photo': u.get('photo_url', ''),
+            'text':       msg.get('text', ''),
+            'image_url':  msg.get('image_url', ''),
+            'gif_url':    msg.get('gif_url', ''),
+            'timestamp':  msg['timestamp'].isoformat()
         })
-    
+
     result.reverse()
     return result
 
