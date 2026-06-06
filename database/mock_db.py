@@ -70,7 +70,12 @@ class MockCollection:
             for key, value in query.items():
                 if key.startswith('$'):
                     continue
-                if doc.get(key) != value:
+                # Support {field: {'$in': [...]}} operator
+                if isinstance(value, dict) and '$in' in value:
+                    if doc.get(key) not in value['$in']:
+                        match = False
+                        break
+                elif doc.get(key) != value:
                     match = False
                     break
             if match:
