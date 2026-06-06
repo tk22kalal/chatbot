@@ -1,516 +1,536 @@
-let ws = null;
-let currentGroup = null;
-let userId = null;
-let userName = null;
-let userPhoto = null;
+/* ══════════════════════════════════════════════════════
+   GUPSHUP — Modern Chat JS
+══════════════════════════════════════════════════════ */
+'use strict';
+
+/* ── State ─────────────────────────────────────────── */
+let ws            = null;
+let currentGroup  = null;
+let userId        = null;
+let userName      = null;
+let userPhoto     = null;
 let typingTimeout = null;
-let currentTheme = 'light';
+let reconnectTimer= null;
+let reconnectDelay= 1500;
+let emojiOpen     = false;
+let lastMsgUserId = null;
+let isNearBottom  = true;
+let drawerOpen    = false;
+
+/* ── Emoji set ─────────────────────────────────────── */
+const EMOJIS = [
+  '😀','😂','😍','🥰','😎','🤩','😜','😏',
+  '🤔','😅','😭','😤','🥺','😴','🤗','😇',
+  '👍','👎','❤️','🔥','💯','✨','🎉','🎊',
+  '🙏','👏','💪','🤝','👀','🫡','💀','🤣',
+  '🌟','💫','⚡','🎯','🏆','🥇','💡','🔮',
+  '🍕','🎮','🎵','🎶','📸','🚀','🌈','🤖',
+];
+
+/* ── DOM helpers ────────────────────────────────────── */
+const $ = id => document.getElementById(id);
 
 const screens = {
-    groupSelection: document.getElementById('group-selection'),
-    chatScreen: document.getElementById('chat-screen'),
-    profileEdit: document.getElementById('profile-edit')
+  groupSelection: $('group-selection'),
+  chatScreen:     $('chat-screen'),
 };
 
+/* ══════════════════════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════════════════════ */
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t ?? '';
+  return d.innerHTML;
+}
+
+function formatTime(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+}
+
+function isDefaultName(n) { return !n || /^User\S+/.test(n); }
+
+/* ── Toasts ─────────────────────────────────────────── */
+function showToast(text, type = 'info', duration = 2800) {
+  const c = $('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.textContent = text;
+  c.appendChild(t);
+  setTimeout(() => {
+    t.classList.add('fade-out');
+    setTimeout(() => t.remove(), 300);
+  }, duration);
+}
+
+/* ── Lightbox ──────────────────────────────────────── */
+function openLightbox(src) {
+  $('lightbox-img').src = src;
+  $('lightbox').classList.add('open');
+}
+$('lightbox').addEventListener('click', e => {
+  if (e.target === $('lightbox') || e.target === $('lightbox-close'))
+    $('lightbox').classList.remove('open');
+});
+
+/* ══════════════════════════════════════════════════════
+   THEME
+══════════════════════════════════════════════════════ */
+function setTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('gupshup-theme', t);
+  document.querySelectorAll('[data-theme-btn]').forEach(b =>
+    b.classList.toggle('active', b.dataset.themeBtn === t)
+  );
+}
+function loadTheme() { setTheme(localStorage.getItem('gupshup-theme') || 'light'); }
+
+/* ══════════════════════════════════════════════════════
+   SCREEN NAVIGATION
+══════════════════════════════════════════════════════ */
+function showScreen(name) {
+  Object.values(screens).forEach(s => s.classList.remove('active'));
+  screens[name].classList.add('active');
+  if (name === 'chatScreen') updateScrollBtn();
+}
+
+/* ══════════════════════════════════════════════════════
+   PROFILE DRAWER
+══════════════════════════════════════════════════════ */
+function openDrawer() {
+  drawerOpen = true;
+  $('profile-drawer').classList.add('open');
+  $('drawer-overlay').classList.add('open');
+  /* Sync current values into drawer */
+  $('display-name-input').value = userName || '';
+  $('edit-photo-preview').src   = userPhoto || '/static/images/default-avatar.svg';
+}
+
+function closeDrawer() {
+  drawerOpen = false;
+  $('profile-drawer').classList.remove('open');
+  $('drawer-overlay').classList.remove('open');
+}
+
+/* ══════════════════════════════════════════════════════
+   USER DATA
+══════════════════════════════════════════════════════ */
 function getTelegramUser() {
-    if (window.Telegram && window.Telegram.WebApp) {
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-        return tg.initDataUnsafe.user || null;
+  try {
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.expand();
+      return window.Telegram.WebApp.initDataUnsafe?.user ?? null;
     }
-    return null;
+  } catch(_) {}
+  return null;
 }
 
-function getUserIdFromTelegram() {
-    const tgUser = getTelegramUser();
-    if (tgUser && tgUser.id) {
-        return tgUser.id;
-    }
-    
-    // Only for testing outside Telegram - use a persistent ID from localStorage
-    let testUserId = localStorage.getItem('gupshup-user-id');
-    if (!testUserId) {
-        testUserId = 'test_' + Math.floor(Math.random() * 1000000);
-        localStorage.setItem('gupshup-user-id', testUserId);
-    }
-    return testUserId;
-}
-
-function setTheme(theme) {
-    currentTheme = theme;
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('gupshup-theme', theme);
-    
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    document.querySelector(`[data-theme-btn="${theme}"]`)?.classList.add('active');
-}
-
-function loadTheme() {
-    const savedTheme = localStorage.getItem('gupshup-theme') || 'light';
-    setTheme(savedTheme);
-}
-
-// Profile data - ALWAYS fetch from server, no localStorage caching
-// This ensures messages always show the latest profile
-function saveProfileToLocalStorage() {
-    // Removed localStorage - profile is always stored on server only
-}
-
-function loadProfileFromLocalStorage() {
-    // Removed localStorage - always fetch fresh from server
-    return { name: null, photo: null };
-}
-
-function showScreen(screenName) {
-    Object.values(screens).forEach(screen => screen.classList.remove('active'));
-    screens[screenName].classList.add('active');
-}
-
-function initWebSocket() {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-        console.log('WebSocket connected');
-        // Re-join current group if user was already in one (handles reconnects)
-        if (currentGroup && userId) {
-            ws.send(JSON.stringify({
-                action: 'join',
-                user_id: userId,
-                group: currentGroup
-            }));
-        }
-    };
-
-    ws.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            handleWebSocketMessage(data);
-        } catch (e) {
-            console.error('Failed to parse WS message:', e);
-        }
-    };
-
-    ws.onclose = () => {
-        console.log('WebSocket disconnected — reconnecting in 2s');
-        ws = null;
-        setTimeout(initWebSocket, 2000);
-    };
-
-    ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
-}
-
-function handleWebSocketMessage(data) {
-    switch(data.type) {
-        case 'history':
-            displayMessageHistory(data.messages);
-            if (data.online_count !== undefined) {
-                updateOnlineCount(data.online_count);
-            }
-            break;
-        case 'new_message':
-            addMessage(data.message);
-            break;
-        case 'user_joined':
-            showNotification(`${data.user.name} joined the chat`);
-            if (data.online_count !== undefined) {
-                updateOnlineCount(data.online_count);
-            }
-            break;
-        case 'user_left':
-            showNotification(`${data.user.name} left the chat`);
-            if (data.online_count !== undefined) {
-                updateOnlineCount(data.online_count);
-            }
-            break;
-        case 'typing':
-            showTypingIndicator(data.user_name);
-            break;
-        case 'profile_updated':
-            if (String(data.user_id) === String(userId)) {
-                userName = data.name;
-                userPhoto = data.photo;
-                updateProfilePreview();
-            }
-            // Update any visible messages from this user in the current chat
-            document.querySelectorAll('.message').forEach(msgEl => {
-                const msgUserId = msgEl.dataset.userId;
-                if (msgUserId && String(msgUserId) === String(data.user_id)) {
-                    const nameEl = msgEl.querySelector('.message-name');
-                    const avatarEl = msgEl.querySelector('.message-avatar');
-                    if (nameEl) nameEl.textContent = data.name;
-                    if (avatarEl && data.photo) avatarEl.src = data.photo;
-                }
-            });
-            break;
-    }
-}
-
-function updateOnlineCount(count) {
-    const onlineCountEl = document.getElementById('online-count');
-    if (onlineCountEl) {
-        onlineCountEl.textContent = `${count} member${count !== 1 ? 's' : ''} online`;
-    }
-}
-
-function sendJoinGroup(groupName) {
-    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
-        // Socket is gone — reconnect; onopen will re-join automatically
-        initWebSocket();
-        return;
-    }
-    if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            action: 'join',
-            user_id: userId,
-            group: groupName
-        }));
-    } else {
-        // Still CONNECTING — wait for it to open; onopen handles the join
-    }
-}
-
-function joinGroup(groupName) {
-    currentGroup = groupName;
-    document.getElementById('group-title').textContent = groupName;
-    document.getElementById('messages-container').innerHTML = '<div class="loading-indicator">Loading messages...</div>';
-    showScreen('chatScreen');
-    sendJoinGroup(groupName);
-}
-
-function sendMessage() {
-    const input = document.getElementById('message-input');
-    const text = input.value.trim();
-    
-    if (!text || !currentGroup) return;
-    
-    const optimisticMessage = {
-        user_id: userId,
-        user_name: userName,
-        user_photo: userPhoto || '/static/images/default-avatar.svg',
-        text: text,
-        timestamp: new Date().toISOString()
-    };
-    
-    addMessage(optimisticMessage);
-    
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            action: 'message',
-            user_id: userId,
-            group: currentGroup,
-            text: text
-        }));
-    }
-    
-    input.value = '';
-}
-
-function addMessage(message) {
-    const container = document.getElementById('messages-container');
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message';
-    messageDiv.dataset.userId = String(message.user_id);
-
-    if (String(message.user_id) === String(userId)) {
-        messageDiv.classList.add('own');
-    }
-    
-    const avatar = message.user_photo || '/static/images/default-avatar.svg';
-    const time = new Date(message.timestamp).toLocaleTimeString('en-US', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-    });
-    
-    let contentHTML = '';
-    if (message.text) {
-        contentHTML = `<div class="message-bubble">${escapeHtml(message.text)}</div>`;
-    }
-    if (message.image_url) {
-        contentHTML += `<div class="message-bubble"><img src="${message.image_url}" alt="Image"></div>`;
-    }
-    if (message.gif_url) {
-        contentHTML += `<div class="message-bubble"><img src="${message.gif_url}" alt="GIF"></div>`;
-    }
-    
-    messageDiv.innerHTML = `
-        <img src="${avatar}" alt="Avatar" class="message-avatar">
-        <div class="message-content">
-            <div class="message-header">
-                <span class="message-name">${escapeHtml(message.user_name)}</span>
-                <span class="message-time">${time}</span>
-            </div>
-            ${contentHTML}
-        </div>
-    `;
-    
-    container.appendChild(messageDiv);
-    container.scrollTop = container.scrollHeight;
-}
-
-function displayMessageHistory(messages) {
-    const container = document.getElementById('messages-container');
-    container.innerHTML = '';
-    
-    if (messages.length === 0) {
-        container.innerHTML = '<div class="empty-state">No messages yet. Be the first to say hi! 👋</div>';
-    } else {
-        messages.forEach(msg => addMessage(msg));
-    }
-}
-
-function showTypingIndicator(userName) {
-    const indicator = document.getElementById('typing-indicator');
-    indicator.innerHTML = `<span>${escapeHtml(userName)}</span> is typing...`;
-    indicator.style.display = 'block';
-    
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
-        indicator.style.display = 'none';
-    }, 3000);
-}
-
-function sendTypingIndicator() {
-    if (ws && ws.readyState === WebSocket.OPEN && currentGroup) {
-        ws.send(JSON.stringify({
-            action: 'typing',
-            user_id: userId,
-            group: currentGroup
-        }));
-    }
-}
-
-function showNotification(text) {
-    console.log('Notification:', text);
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function isDefaultName(name, uid) {
-    if (!name) return true;
-    // matches "User123456" or "User123456789" patterns
-    return /^User\d+$/.test(name);
+function getOrCreateUserId() {
+  const tg = getTelegramUser();
+  if (tg?.id) return String(tg.id);
+  let id = localStorage.getItem('gupshup-uid');
+  if (!id) { id = 'g_' + Math.floor(Math.random()*9e6+1e6); localStorage.setItem('gupshup-uid', id); }
+  return id;
 }
 
 async function loadUserData() {
-    try {
-        const tgUser = getTelegramUser();
-        let url = `/api/user?user_id=${userId}`;
-        if (tgUser) {
-            const fullName = [tgUser.first_name, tgUser.last_name].filter(Boolean).join(' ');
-            if (fullName) url += `&first_name=${encodeURIComponent(fullName)}`;
-            if (tgUser.username) url += `&username=${encodeURIComponent(tgUser.username)}`;
-            if (tgUser.photo_url) url += `&photo_url=${encodeURIComponent(tgUser.photo_url)}`;
-        }
-        const response = await fetch(url);
-        if (response.ok) {
-            const data = await response.json();
-            userName = data.display_name;
-            userPhoto = data.photo_url;
-            updateProfilePreview();
-
-            // If name is still the default placeholder, auto-open profile editor
-            if (isDefaultName(userName, userId)) {
-                showScreen('profileEdit');
-            }
-        }
-    } catch (error) {
-        console.error('Failed to load user data:', error);
-        userName = 'User' + userId;
-        userPhoto = '';
-        updateProfilePreview();
-        showScreen('profileEdit');
+  try {
+    const tg  = getTelegramUser();
+    let url   = `/api/user?user_id=${encodeURIComponent(userId)}`;
+    if (tg) {
+      const full = [tg.first_name, tg.last_name].filter(Boolean).join(' ');
+      if (full)         url += `&first_name=${encodeURIComponent(full)}`;
+      if (tg.username)  url += `&username=${encodeURIComponent(tg.username)}`;
+      if (tg.photo_url) url += `&photo_url=${encodeURIComponent(tg.photo_url)}`;
     }
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const d = await r.json();
+    userName  = d.display_name;
+    userPhoto = d.photo_url;
+    applyProfileUI();
+    if (isDefaultName(userName)) openDrawer();   /* new user → open drawer */
+  } catch(e) {
+    console.error('loadUserData:', e);
+    userName  = 'User' + userId.slice(-4);
+    userPhoto = '';
+    applyProfileUI();
+    openDrawer();
+  }
 }
 
-function updateProfilePreview() {
-    document.getElementById('preview-name').textContent = userName;
-    document.getElementById('preview-photo').src = userPhoto || '/static/images/default-avatar.svg';
-    document.getElementById('display-name-input').value = userName;
-    document.getElementById('edit-photo-preview').src = userPhoto || '/static/images/default-avatar.svg';
-}
-
-async function uploadImage(file) {
-    const formData = new FormData();
-    formData.append('image', file);
-    
-    try {
-        const response = await fetch('/upload', {
-            method: 'POST',
-            body: formData
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            return data.url;
-        }
-    } catch (error) {
-        console.error('Upload failed:', error);
-    }
-    return null;
+function applyProfileUI() {
+  /* top-right avatar trigger */
+  $('preview-photo').src = userPhoto || '/static/images/default-avatar.svg';
+  /* hero greeting */
+  $('preview-name').textContent = userName ? `Hey, ${userName} 👋` : 'Loading…';
+  /* drawer inputs */
+  $('edit-photo-preview').src   = userPhoto || '/static/images/default-avatar.svg';
+  $('display-name-input').value = userName || '';
 }
 
 async function saveProfile() {
-    const newName = document.getElementById('display-name-input').value.trim();
+  const newName = $('display-name-input').value.trim();
+  if (!newName) { showToast('Please enter a display name', 'info'); return; }
 
-    if (!newName) {
-        alert('Please enter a name.');
-        return;
-    }
+  const btn = $('save-profile-btn');
+  btn.textContent = 'Saving…'; btn.disabled = true;
 
-    const saveBtn = document.getElementById('save-profile-btn');
-    saveBtn.textContent = 'Saving...';
-    saveBtn.disabled = true;
+  try {
+    const r = await fetch('/api/user/update', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ user_id:userId, display_name:newName, photo_url:userPhoto || '' })
+    });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || 'Server error');
+    userName = newName;
+    applyProfileUI();
+    closeDrawer();
+    showToast('Profile saved ✓', 'join');
+  } catch(e) {
+    showToast('Save failed: ' + e.message, 'info');
+  } finally {
+    btn.textContent = 'Save Changes'; btn.disabled = false;
+  }
+}
 
-    try {
-        const response = await fetch('/api/user/update', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                user_id: userId,
-                display_name: newName,
-                photo_url: userPhoto || ''
-            })
-        });
+async function uploadImage(file) {
+  const fd = new FormData(); fd.append('image', file);
+  try {
+    const r = await fetch('/upload', {method:'POST', body:fd});
+    if (r.ok) { const d = await r.json(); return d.url ?? null; }
+  } catch(e) { console.error('upload:', e); }
+  return null;
+}
 
-        const result = await response.json();
+/* ══════════════════════════════════════════════════════
+   WEBSOCKET
+══════════════════════════════════════════════════════ */
+function initWebSocket() {
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/ws`);
 
-        if (!response.ok || result.error) {
-            throw new Error(result.error || 'Server error');
+  ws.onopen = () => {
+    reconnectDelay = 1500;
+    $('conn-banner').classList.remove('show');
+    if (currentGroup && userId) sendRaw({action:'join', user_id:userId, group:currentGroup});
+  };
+  ws.onmessage = e => { try { handleMsg(JSON.parse(e.data)); } catch(_) {} };
+  ws.onclose = ws.onerror = () => {
+    ws = null;
+    if (currentGroup) $('conn-banner').classList.add('show');
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      initWebSocket();
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+    }, reconnectDelay);
+  };
+}
+
+function sendRaw(obj) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function handleMsg(data) {
+  switch(data.type) {
+    case 'history':
+      renderHistory(data.messages || []);
+      if (data.online_count !== undefined) setOnlineCount(data.online_count);
+      break;
+    case 'new_message':
+      appendMessage(data.message);
+      break;
+    case 'user_joined':
+      showToast(`${data.user?.name || 'Someone'} joined`, 'join', 2200);
+      if (data.online_count !== undefined) setOnlineCount(data.online_count);
+      break;
+    case 'user_left':
+      showToast(`${data.user?.name || 'Someone'} left`, 'leave', 2200);
+      if (data.online_count !== undefined) setOnlineCount(data.online_count);
+      break;
+    case 'typing':
+      revealTyping(data.user_name);
+      break;
+    case 'profile_updated':
+      if (String(data.user_id) === String(userId)) {
+        userName = data.name; userPhoto = data.photo; applyProfileUI();
+      }
+      document.querySelectorAll('.message').forEach(el => {
+        if (String(el.dataset.uid) === String(data.user_id)) {
+          const nm = el.querySelector('.message-name');
+          const av = el.querySelector('.message-avatar');
+          if (nm) nm.textContent = data.name;
+          if (av && data.photo) av.src = data.photo;
         }
-
-        userName = newName;
-        updateProfilePreview();
-        showScreen('groupSelection');
-    } catch (error) {
-        console.error('Failed to update profile:', error);
-        alert('Failed to save profile: ' + error.message + '. Please try again.');
-    } finally {
-        saveBtn.textContent = 'Save Profile';
-        saveBtn.disabled = false;
-    }
+      });
+      break;
+  }
 }
 
-function scrollToBottom() {
-    const container = document.getElementById('messages-container');
-    container.scrollTop = container.scrollHeight;
+/* ══════════════════════════════════════════════════════
+   GROUP JOIN / LEAVE
+══════════════════════════════════════════════════════ */
+function joinGroup(name) {
+  currentGroup  = name;
+  lastMsgUserId = null;
+  $('group-title').textContent  = name;
+  $('group-avatar').src         = '/static/images/default-avatar.svg';
+  setOnlineCount(0);
+  showScreen('chatScreen');
+
+  const c = $('messages-container');
+  c.innerHTML = '';
+  const spin = document.createElement('div');
+  spin.className = 'loading-spinner';
+  spin.innerHTML = '<div class="spinner-ring"></div><div class="spinner-text">Loading messages…</div>';
+  c.appendChild(spin);
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) initWebSocket();
+  else sendRaw({action:'join', user_id:userId, group:name});
 }
 
+function leaveGroup() {
+  if (currentGroup) {
+    sendRaw({action:'leave', user_id:userId, group:currentGroup});
+    currentGroup  = null;
+    lastMsgUserId = null;
+  }
+  $('conn-banner').classList.remove('show');
+  showScreen('groupSelection');
+}
+
+function setOnlineCount(n) {
+  $('online-count').textContent = `● ${n} member${n !== 1 ? 's' : ''} online`;
+}
+
+/* ══════════════════════════════════════════════════════
+   MESSAGES
+══════════════════════════════════════════════════════ */
+function renderHistory(msgs) {
+  const c = $('messages-container');
+  c.innerHTML = ''; lastMsgUserId = null;
+  if (!msgs.length) {
+    c.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">💬</div>
+      <div class="empty-text">No messages yet</div>
+      <div class="empty-sub">Be the first to say hi! 👋</div>
+    </div>`;
+    return;
+  }
+  msgs.forEach(m => appendMessage(m, false));
+  scrollBottom(false);
+}
+
+function appendMessage(msg, animate = true) {
+  const c = $('messages-container');
+  const empty = c.querySelector('.empty-state, .loading-spinner');
+  if (empty) empty.remove();
+
+  const isOwn  = String(msg.user_id) === String(userId);
+  const consec = String(msg.user_id) === String(lastMsgUserId);
+  lastMsgUserId = String(msg.user_id);
+
+  const time   = formatTime(msg.timestamp);
+  const avatar = msg.user_photo || '/static/images/default-avatar.svg';
+  const name   = msg.user_name  || 'Anonymous';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = `message${isOwn ? ' own' : ''}${consec ? ' consecutive' : ''}`;
+  wrapper.dataset.uid = String(msg.user_id);
+  if (!animate) wrapper.style.animation = 'none';
+
+  let bubbleContent = '';
+  if (msg.text)      bubbleContent += `<span>${escapeHtml(msg.text)}</span>`;
+  if (msg.image_url) bubbleContent += `<img src="${msg.image_url}" alt="Image" loading="lazy" class="msg-img">`;
+  if (msg.gif_url)   bubbleContent += `<img src="${msg.gif_url}"   alt="GIF"   loading="lazy" class="msg-img">`;
+
+  const tailClass = isOwn ? 'tail-out' : 'tail-in';
+
+  wrapper.innerHTML = `
+    <img src="${avatar}" alt="${escapeHtml(name)}" class="message-avatar">
+    <div class="message-content">
+      ${!consec ? `<div class="message-meta">
+        <span class="message-name">${escapeHtml(name)}</span>
+        <span class="message-time">${time}</span>
+      </div>` : ''}
+      <div class="message-bubble ${tailClass}">
+        ${bubbleContent}
+        <span class="bubble-time-inline">${time}</span>
+      </div>
+    </div>`;
+
+  wrapper.querySelector('.message-avatar').addEventListener('click', () =>
+    showToast(name, 'info', 1600)
+  );
+  wrapper.querySelectorAll('.msg-img').forEach(img =>
+    img.addEventListener('click', () => openLightbox(img.src))
+  );
+
+  c.appendChild(wrapper);
+  if (isNearBottom || isOwn) scrollBottom(false);
+  updateScrollBtn();
+}
+
+/* ══════════════════════════════════════════════════════
+   SEND MESSAGE
+══════════════════════════════════════════════════════ */
+function sendMessage() {
+  const input = $('message-input');
+  const text  = input.value.trim();
+  if (!text || !currentGroup) return;
+  appendMessage({user_id:userId, user_name:userName, user_photo:userPhoto, text, timestamp:new Date().toISOString()});
+  sendRaw({action:'message', user_id:userId, group:currentGroup, text});
+  input.value = '';
+  autoResize(input); updateSendBtn();
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 110) + 'px';
+}
+
+function updateSendBtn() {
+  $('send-btn').classList.toggle('visible', $('message-input').value.trim().length > 0);
+}
+
+/* ── Typing ─────────────────────────────────────────── */
+let typingSent = false;
+function maybeSendTyping() {
+  if (typingSent) return; typingSent = true;
+  sendRaw({action:'typing', user_id:userId, group:currentGroup});
+  setTimeout(() => { typingSent = false; }, 2400);
+}
+function revealTyping(name) {
+  $('typing-text').textContent = `${name} is typing`;
+  $('typing-bar').classList.add('visible');
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => $('typing-bar').classList.remove('visible'), 3200);
+}
+
+/* ══════════════════════════════════════════════════════
+   SCROLL
+══════════════════════════════════════════════════════ */
+function scrollBottom(smooth = true) {
+  const c = $('messages-container');
+  c.scrollTo({top:c.scrollHeight, behavior:smooth ? 'smooth' : 'auto'});
+}
+function updateScrollBtn() {
+  const c = $('messages-container');
+  const dist = c.scrollHeight - c.scrollTop - c.clientHeight;
+  isNearBottom = dist < 80;
+  $('scroll-bottom-btn').classList.toggle('visible', dist > 160);
+}
+
+/* ══════════════════════════════════════════════════════
+   EMOJI PICKER
+══════════════════════════════════════════════════════ */
+function buildEmojiPicker() {
+  const grid = $('emoji-grid');
+  EMOJIS.forEach(em => {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-btn'; btn.textContent = em;
+    btn.addEventListener('click', () => {
+      const inp = $('message-input');
+      const pos = inp.selectionStart ?? inp.value.length;
+      inp.value = inp.value.slice(0, pos) + em + inp.value.slice(pos);
+      inp.selectionStart = inp.selectionEnd = pos + em.length;
+      inp.focus(); autoResize(inp); updateSendBtn();
+    });
+    grid.appendChild(btn);
+  });
+}
+function toggleEmoji() {
+  emojiOpen = !emojiOpen;
+  $('emoji-picker').classList.toggle('open', emojiOpen);
+}
+document.addEventListener('click', e => {
+  if (emojiOpen && !$('emoji-picker').contains(e.target) && e.target !== $('emoji-btn')) {
+    emojiOpen = false; $('emoji-picker').classList.remove('open');
+  }
+});
+
+/* ══════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
-    userId = getUserIdFromTelegram();
-    
-    loadTheme();
-    initWebSocket();
-    loadUserData();
-    
-    document.querySelectorAll('.theme-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const theme = btn.dataset.themeBtn;
-            setTheme(theme);
-        });
-    });
-    
-    document.querySelectorAll('.group-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const group = btn.dataset.group;
-            joinGroup(group);
-        });
-    });
-    
-    document.getElementById('back-btn').addEventListener('click', () => {
-        if (currentGroup) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    action: 'leave',
-                    user_id: userId,
-                    group: currentGroup
-                }));
-            }
-            currentGroup = null;
-            showScreen('groupSelection');
-        }
-    });
-    
-    document.getElementById('send-btn').addEventListener('click', sendMessage);
-    
-    document.getElementById('message-input').addEventListener('keypress', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    });
-    
-    document.getElementById('message-input').addEventListener('input', () => {
-        sendTypingIndicator();
-    });
-    
-    document.getElementById('edit-profile-btn').addEventListener('click', () => {
-        showScreen('profileEdit');
-    });
-    
-    document.getElementById('profile-back-btn').addEventListener('click', () => {
-        showScreen('groupSelection');
-    });
-    
-    document.getElementById('save-profile-btn').addEventListener('click', saveProfile);
-    
-    document.getElementById('change-photo-btn').addEventListener('click', () => {
-        document.getElementById('photo-upload').click();
-    });
-    
-    document.getElementById('photo-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const url = await uploadImage(file);
-            if (url) {
-                userPhoto = url;
-                document.getElementById('edit-photo-preview').src = url;
-                // Photo will be saved when user clicks "Save Profile" button
-            }
-        }
-    });
-    
-    document.getElementById('refresh-chat-btn').addEventListener('click', () => {
-        scrollToBottom();
-    });
-    
-    document.getElementById('attach-btn').addEventListener('click', () => {
-        document.getElementById('image-upload').click();
-    });
-    
-    document.getElementById('image-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const optimisticImageMessage = {
-                user_id: userId,
-                user_name: userName,
-                user_photo: userPhoto || '/static/images/default-avatar.svg',
-                image_url: URL.createObjectURL(file),
-                timestamp: new Date().toISOString()
-            };
-            
-            addMessage(optimisticImageMessage);
-            
-            const url = await uploadImage(file);
-            if (url && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    action: 'message',
-                    user_id: userId,
-                    group: currentGroup,
-                    image_url: url
-                }));
-            }
-        }
-    });
+  userId = getOrCreateUserId();
+  loadTheme();
+  buildEmojiPicker();
+  initWebSocket();
+  loadUserData();
+
+  /* ── Theme buttons (inside drawer) ─────────────── */
+  document.querySelectorAll('[data-theme-btn]').forEach(b =>
+    b.addEventListener('click', () => setTheme(b.dataset.themeBtn))
+  );
+
+  /* ── Group cards ───────────────────────────────── */
+  document.querySelectorAll('.group-card').forEach(btn =>
+    btn.addEventListener('click', () => joinGroup(btn.dataset.group))
+  );
+
+  /* ── Profile trigger (top-right avatar) ─────────── */
+  $('profile-trigger').addEventListener('click', () => openDrawer());
+
+  /* ── Drawer close ──────────────────────────────── */
+  $('drawer-close-btn').addEventListener('click', closeDrawer);
+  $('drawer-overlay').addEventListener('click', closeDrawer);
+
+  /* ── Avatar upload (inside drawer) ─────────────── */
+  $('avatar-edit-wrap').addEventListener('click', () => $('photo-upload').click());
+  $('photo-upload').addEventListener('change', async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const url  = await uploadImage(file);
+    if (url) { userPhoto = url; $('edit-photo-preview').src = url; $('preview-photo').src = url; showToast('Photo uploaded ✓','join'); }
+    else showToast('Upload failed','info');
+    e.target.value = '';
+  });
+
+  /* ── Save profile ──────────────────────────────── */
+  $('save-profile-btn').addEventListener('click', saveProfile);
+  $('display-name-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveProfile();
+  });
+
+  /* ── Chat back ─────────────────────────────────── */
+  $('back-btn').addEventListener('click', leaveGroup);
+
+  /* ── Send ──────────────────────────────────────── */
+  $('send-btn').addEventListener('click', sendMessage);
+  $('message-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  $('message-input').addEventListener('input', e => {
+    autoResize(e.target); updateSendBtn();
+    if (currentGroup) maybeSendTyping();
+  });
+
+  /* ── Emoji ─────────────────────────────────────── */
+  $('emoji-btn').addEventListener('click', e => { e.stopPropagation(); toggleEmoji(); });
+
+  /* ── Attach image ──────────────────────────────── */
+  $('attach-btn').addEventListener('click', () => $('image-upload').click());
+  $('image-upload').addEventListener('change', async e => {
+    const file = e.target.files[0]; if (!file) return;
+    const local = URL.createObjectURL(file);
+    appendMessage({user_id:userId, user_name:userName, user_photo:userPhoto, image_url:local, timestamp:new Date().toISOString()});
+    const url = await uploadImage(file);
+    if (url) sendRaw({action:'message', user_id:userId, group:currentGroup, image_url:url});
+    e.target.value = '';
+  });
+
+  /* ── Scroll buttons ────────────────────────────── */
+  $('refresh-btn').addEventListener('click', () => scrollBottom(true));
+  $('scroll-bottom-btn').addEventListener('click', () => scrollBottom(true));
+  $('messages-container').addEventListener('scroll', updateScrollBtn, {passive:true});
+
+  /* ── Members badge ─────────────────────────────── */
+  $('members-btn').addEventListener('click', () => showToast($('online-count').textContent,'info',2000));
+
+  /* ── Escape key closes drawer ──────────────────── */
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && drawerOpen) closeDrawer(); });
 });
