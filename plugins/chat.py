@@ -17,7 +17,7 @@ from database.database import (
     get_ai_history, set_ai_history, increment_user_msg_count,
     record_chat_end_and_get_skips, get_skip_count, reset_skip_count,
 )
-from plugins.ai_girl import handle_ai_message
+from plugins.ai_girl import handle_ai_message, clear_session_cache
 
 
 def _get_webapp_url() -> str | None:
@@ -146,6 +146,7 @@ async def stop_chat(client: Bot, message: Message):
 
     # ── AI girl session ───────────────────────────────────────────────────────
     if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
+        clear_session_cache(user_id)
         await clear_user_ai_partner(user_id)
         await message.reply_text(
             STOPPED_CHAT_MSG,
@@ -192,6 +193,7 @@ async def next_partner(client: Bot, message: Message):
 
     # ── Leave AI girl session ─────────────────────────────────────────────────
     if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
+        clear_session_cache(user_id)
         await clear_user_ai_partner(user_id)
         # Count AI chat as a "skip" (short chat) so counter doesn't reset
         skip_count = await get_skip_count(user_id)
