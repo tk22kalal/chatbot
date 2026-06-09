@@ -244,3 +244,81 @@ async def get_group_messages(group_name: str, limit: int = 50):
 async def get_active_users_in_group(group_name: str):
     """Get count of active users in a group"""
     return gupshup_messages.distinct('user_id', {'group': group_name})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  AI GIRL STATE  (stored directly on the user document)
+# ══════════════════════════════════════════════════════════════════════════════
+
+AI_GIRL_PARTNER_ID = -999   # sentinel stored in partner_id during AI chat
+
+
+async def set_user_ai_partner(user_id: int) -> None:
+    """Connect user to AI girl — sets partner_id to sentinel and clears state."""
+    user_data.update_one({'_id': user_id}, {'$set': {
+        'partner_id':       AI_GIRL_PARTNER_ID,
+        'searching':        False,
+        'ai_partner':       True,
+        'ai_history':       [],
+        'current_msg_count': 0,
+    }})
+
+
+async def clear_user_ai_partner(user_id: int) -> None:
+    """End AI girl session and clean up state."""
+    user_data.update_one({'_id': user_id}, {'$set': {
+        'partner_id':       None,
+        'searching':        False,
+        'ai_partner':       False,
+        'ai_history':       [],
+        'current_msg_count': 0,
+    }})
+
+
+async def get_ai_history(user_id: int) -> list:
+    user = user_data.find_one({'_id': user_id})
+    return (user.get('ai_history') or []) if user else []
+
+
+async def set_ai_history(user_id: int, history: list) -> None:
+    user_data.update_one({'_id': user_id}, {'$set': {'ai_history': history}})
+
+
+async def increment_user_msg_count(user_id: int) -> int:
+    """Increment and return new per-chat message counter."""
+    user  = user_data.find_one({'_id': user_id})
+    count = (user.get('current_msg_count', 0) if user else 0) + 1
+    user_data.update_one({'_id': user_id}, {'$set': {'current_msg_count': count}})
+    return count
+
+
+async def record_chat_end_and_get_skips(user_id: int) -> int:
+    """
+    Call when a chat ends (stop / next).
+    If the chat had ≤ 5 messages → increments skip_count (consecutive short chats).
+    If the chat had > 5 messages → resets skip_count to 0 (user had a real chat).
+    Returns the new skip_count.
+    """
+    user = user_data.find_one({'_id': user_id})
+    if not user:
+        return 0
+    msg_count  = user.get('current_msg_count', 0)
+    skip_count = user.get('skip_count', 0)
+    if msg_count <= 5:
+        skip_count += 1
+    else:
+        skip_count = 0
+    user_data.update_one({'_id': user_id}, {'$set': {
+        'skip_count':        skip_count,
+        'current_msg_count': 0,
+    }})
+    return skip_count
+
+
+async def get_skip_count(user_id: int) -> int:
+    user = user_data.find_one({'_id': user_id})
+    return (user.get('skip_count', 0) if user else 0)
+
+
+async def reset_skip_count(user_id: int) -> None:
+    user_data.update_one({'_id': user_id}, {'$set': {'skip_count': 0}})
