@@ -41,6 +41,12 @@ except ValueError:
 
 ADMINS.append(OWNER_ID)
 
+# Groq AI API key (free at console.groq.com)
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+
+# AI Girl trigger: how many consecutive short chats (≤5 msgs) before AI girl activates
+AI_GIRL_SKIP_THRESHOLD = int(os.environ.get("AI_GIRL_SKIP_THRESHOLD", "4"))
+
 # Bot Messages
 START_MSG = """
 👋 Welcome to Anonymous Chat Bot!
