@@ -1,23 +1,26 @@
-#(©)CodeXBotz - Anonymous Chat Handler
-from config import ADMINS
+#(©)CodeXBotz - Anonymous Chat Handler + AI Girl
 import random
-import time
+import asyncio
 from pyrogram import Client, filters
-from pyrogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, WebAppInfo
+from pyrogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
+from pyrogram.enums import ChatAction, ParseMode
 import os
-from pyrogram.enums import ChatAction
-from pyrogram.enums import ParseMode
+
 from bot import Bot
-from config import PARTNER_FOUND_MSG, PARTNER_LEFT_MSG, SEARCHING_MSG, STOPPED_CHAT_MSG, CHANNEL_ID
+from config import PARTNER_FOUND_MSG, PARTNER_LEFT_MSG, SEARCHING_MSG, STOPPED_CHAT_MSG, CHANNEL_ID, AI_GIRL_SKIP_THRESHOLD
 from database.database import (
-    get_user, set_user_searching, set_user_partner, 
+    get_user, set_user_searching, set_user_partner,
     get_searching_users, clear_user_chat_state,
-    log_chat_start, log_message, end_chat
+    log_chat_start, log_message, end_chat,
+    # AI girl
+    AI_GIRL_PARTNER_ID, set_user_ai_partner, clear_user_ai_partner,
+    get_ai_history, set_ai_history, increment_user_msg_count,
+    record_chat_end_and_get_skips, get_skip_count, reset_skip_count,
 )
+from plugins.ai_girl import handle_ai_message
 
 
 def _get_webapp_url() -> str | None:
-    """Return a clean https:// webapp URL, or None if not set."""
     url = (os.environ.get("WEB_URL") or os.environ.get("REPLIT_DEV_DOMAIN") or "").strip().rstrip("/")
     if not url:
         return None
@@ -42,234 +45,266 @@ def _search_keyboard(webapp_url: str | None) -> ReplyKeyboardMarkup:
         ], resize_keyboard=True)
     return ReplyKeyboardMarkup([[KeyboardButton("🔎 Find Partner")]], resize_keyboard=True)
 
-async def try_match_users(client: Bot, user_id: int, user: dict):
-    """Attempt to match a user with an available partner"""
-    # Get all searching users (excluding current user)
-    searching_users = await get_searching_users()
-    available_users = [u for u in searching_users if u['_id'] != user_id]
-    
+
+# ── AI Girl connector ─────────────────────────────────────────────────────────
+
+async def _start_ai_chat(client: Bot, user_id: int) -> None:
+    """Silently connect user to AI girl — feels identical to a real match."""
+    await set_user_ai_partner(user_id)
+    webapp_url = _get_webapp_url()
+    await client.send_message(
+        user_id,
+        PARTNER_FOUND_MSG,
+        parse_mode=ParseMode.HTML,
+        reply_markup=_chat_keyboard(webapp_url)
+    )
+
+
+# ── Match users OR fall back to AI ───────────────────────────────────────────
+
+async def try_match_users(client: Bot, user_id: int, user: dict) -> bool:
+    """
+    Try to find a real partner.
+    If none found and user has hit the skip threshold → connect to AI girl.
+    Returns True if matched (real or AI), False if queued.
+    """
+    searching_users   = await get_searching_users()
+    available_users   = [u for u in searching_users if u['_id'] != user_id]
+
     if available_users:
-        # Random partner selection
-        partner = random.choice(available_users)
-        partner_id = partner['_id']
-        
-        # Connect both users
+        partner       = random.choice(available_users)
+        partner_id    = partner['_id']
+
         await set_user_partner(user_id, partner_id)
         await set_user_partner(partner_id, user_id)
         await set_user_searching(user_id, False)
         await set_user_searching(partner_id, False)
-        
-        # Log chat start in database with unique token
+        await reset_skip_count(user_id)
+
         chat_token = await log_chat_start(user_id, partner_id)
-        
-        # Log to DB channel with token
+
         await client.send_to_channel(
             f"🔐 <b>New Chat Started</b>\n\n"
             f"<b>Token:</b> <code>{chat_token}</code>\n\n"
-            f"<b>User1:</b> @{user.get('username', 'N/A')} (ID: {user_id}, Gender: {user.get('gender', 'N/A')})\n"
-            f"<b>User2:</b> @{partner.get('username', 'N/A')} (ID: {partner_id}, Gender: {partner.get('gender', 'N/A')})"
+            f"<b>User1:</b> @{user.get('username', 'N/A')} (ID: {user_id})\n"
+            f"<b>User2:</b> @{partner.get('username', 'N/A')} (ID: {partner_id})"
         )
-        
-        # Notify both users
-        chat_keyboard = _chat_keyboard(_get_webapp_url())
 
-        # Send to both users
-        await client.send_message(user_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
-        await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode = ParseMode.HTML, reply_markup=chat_keyboard)
-        
+        webapp_url    = _get_webapp_url()
+        chat_kb       = _chat_keyboard(webapp_url)
+        await client.send_message(user_id,    PARTNER_FOUND_MSG, parse_mode=ParseMode.HTML, reply_markup=chat_kb)
+        await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode=ParseMode.HTML, reply_markup=chat_kb)
         return True
-    return False
 
-# Search for partner - /search command or "Find Partner" button
-@Bot.on_message((filters.command('search') | filters.regex('^🔎 Find Partner$')) & filters.private & ~filters.user(ADMINS))
+    # No real partner — check if AI girl should activate
+    skip_count = await get_skip_count(user_id)
+    if skip_count >= AI_GIRL_SKIP_THRESHOLD:
+        await _start_ai_chat(client, user_id)
+        return True   # "matched" (to AI)
+
+    return False   # still queued
+
+
+# ── /search ───────────────────────────────────────────────────────────────────
+
+@Bot.on_message((filters.command('search') | filters.regex('^🔎 Find Partner$')) & filters.private)
 async def search_partner(client: Bot, message: Message):
     user_id = message.from_user.id
-    user = await get_user(user_id)
-    
+    user    = await get_user(user_id)
+
     if not user:
-        await message.reply_text("Please use /start first to set up your profile.")
+        await message.reply_text("Please use /start first.")
         return
-    
     if not user.get('gender'):
-        await message.reply_text("Please use /start to select your gender first.")
+        await message.reply_text("Please use /start to set your gender first.")
         return
-    
-    # Check if user is already in a chat
+    if user.get('partner_id') == AI_GIRL_PARTNER_ID or user.get('ai_partner'):
+        await message.reply_text("You're in a chat! Use /stop to end it or /next for a new partner.")
+        return
     if user.get('partner_id'):
-        await message.reply_text("You're already in a chat! Use /stop to end it or /next to find a new partner.")
+        await message.reply_text("You're already in a chat! Use /stop to end it.")
         return
-    
-    # Check if user is already searching
     if user.get('searching'):
-        await message.reply_text("You're already searching for a partner. Please wait...")
+        await message.reply_text("Already searching… please wait ⏳")
         return
-    
-    # Set user as searching
+
     await set_user_searching(user_id, True)
-    
-    # Try to find a match
     matched = await try_match_users(client, user_id, user)
-    
+
     if not matched:
-        # No partner available - user is now in queue
         await message.reply_text(SEARCHING_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
 
-# Stop current chat - /stop command
-@Bot.on_message(filters.command('stop') & filters.private & ~filters.user(ADMINS))
+
+# ── /stop ─────────────────────────────────────────────────────────────────────
+
+@Bot.on_message(filters.command('stop') & filters.private)
 async def stop_chat(client: Bot, message: Message):
     user_id = message.from_user.id
-    user = await get_user(user_id)
-    
+    user    = await get_user(user_id)
     if not user:
         return
-    
+
+    # ── AI girl session ───────────────────────────────────────────────────────
+    if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
+        await clear_user_ai_partner(user_id)
+        await message.reply_text(
+            STOPPED_CHAT_MSG,
+            reply_markup=_search_keyboard(_get_webapp_url())
+        )
+        return
+
     partner_id = user.get('partner_id')
-    
+
     if not partner_id:
-        # Not in a chat
         if user.get('searching'):
             await set_user_searching(user_id, False)
             await message.reply_text("Search cancelled.")
         else:
-            await message.reply_text("You're not in a chat right now. Use /search to find a partner.")
+            await message.reply_text("You're not in a chat. Use /search to find a partner.")
         return
-    
-    # End the chat
+
+    # Record msg count for skip tracking
+    await record_chat_end_and_get_skips(user_id)
     await end_chat(user_id, partner_id)
-    
-    # Log to DB channel
+
     partner = await get_user(partner_id)
     await client.send_to_channel(
         f"❌ <b>Chat Ended</b>\n\n"
-        f"User 1: {user_id} (@{user.get('username', 'N/A')})\n"
-        f"User 2: {partner_id} (@{partner.get('username', 'N/A')})\n"
-        f"Ended by: {user_id}"
+        f"User 1: {user_id} | User 2: {partner_id}\nEnded by: {user_id}"
     )
-    
-    # Clear chat state for both users
+
     await clear_user_chat_state(user_id)
     await clear_user_chat_state(partner_id)
-    
-    # Notify both users with GUPSHUP button
-    search_keyboard = _search_keyboard(_get_webapp_url())
-    await message.reply_text(STOPPED_CHAT_MSG, reply_markup=search_keyboard)
-    await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_keyboard)
 
-# Next partner - /next command
-@Bot.on_message(filters.command('next') & filters.private & ~filters.user(ADMINS))
+    search_kb = _search_keyboard(_get_webapp_url())
+    await message.reply_text(STOPPED_CHAT_MSG, reply_markup=search_kb)
+    await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=search_kb)
+
+
+# ── /next ─────────────────────────────────────────────────────────────────────
+
+@Bot.on_message(filters.command('next') & filters.private)
 async def next_partner(client: Bot, message: Message):
     user_id = message.from_user.id
-    user = await get_user(user_id)
-    
+    user    = await get_user(user_id)
     if not user:
         return
-    
+
+    # ── Leave AI girl session ─────────────────────────────────────────────────
+    if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
+        await clear_user_ai_partner(user_id)
+        # Count AI chat as a "skip" (short chat) so counter doesn't reset
+        skip_count = await get_skip_count(user_id)
+        # immediately try to find a real partner
+        user_fresh = await get_user(user_id)
+        await set_user_searching(user_id, True)
+        matched = await try_match_users(client, user_id, user_fresh or user)
+        if not matched:
+            await message.reply_text(SEARCHING_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
+        return
+
     partner_id = user.get('partner_id')
-    
     if not partner_id:
         await message.reply_text("You're not in a chat. Use /search to find a partner.")
         return
-    
-    # End current chat
+
+    # Record skip count for real chats
+    new_skips = await record_chat_end_and_get_skips(user_id)
     await end_chat(user_id, partner_id)
-    
-    # Log to DB channel
+
     partner = await get_user(partner_id)
     await client.send_to_channel(
-        f"⏭ <b>User Skipped to Next</b>\n\n"
-        f"User 1: {user_id} (@{user.get('username', 'N/A')})\n"
-        f"User 2: {partner_id} (@{partner.get('username', 'N/A')})\n"
-        f"Skipped by: {user_id}"
+        f"⏭ <b>User Skipped</b>\n\nUser 1: {user_id} | User 2: {partner_id}\nSkipped by: {user_id}"
     )
-    
-    # Clear partner for both users
+
     await clear_user_chat_state(user_id)
     await clear_user_chat_state(partner_id)
-    
-    # Notify partner with GUPSHUP button
+
+    # Notify partner
     await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
-    
-    # Automatically search for new partner for current user
+
+    # Auto-search for current user
     await set_user_searching(user_id, True)
-    
-    matched = await try_match_users(client, user_id, user)
-    
+    user_fresh = await get_user(user_id)
+    matched = await try_match_users(client, user_id, user_fresh or user)
     if not matched:
         await message.reply_text(SEARCHING_MSG)
 
-# Handle all messages (forward to partner) - ANONYMOUSLY
-@Bot.on_message(filters.private & ~filters.command(['start', 'search', 'next', 'stop', 'users', 'group', 'gupshup', 'broadcast', 'stats']) & ~filters.user(ADMINS))
+
+# ── Message forwarder (real chat OR AI girl) ──────────────────────────────────
+
+@Bot.on_message(
+    filters.private
+    & ~filters.command(['start', 'search', 'next', 'stop', 'users',
+                        'group', 'gupshup', 'broadcast', 'stats', 'getchat'])
+)
 async def handle_messages(client: Bot, message: Message):
     user_id = message.from_user.id
-    user = await get_user(user_id)
-    
+    user    = await get_user(user_id)
     if not user:
         return
-    
+
+    # ── Route to AI girl ──────────────────────────────────────────────────────
+    if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
+        asyncio.ensure_future(
+            handle_ai_message(
+                client, message, user_id,
+                get_ai_history_fn   = get_ai_history,
+                set_ai_history_fn   = set_ai_history,
+                increment_msg_fn    = increment_user_msg_count,
+            )
+        )
+        return
+
+    # ── Route to real partner ─────────────────────────────────────────────────
     partner_id = user.get('partner_id')
-    
     if not partner_id:
-        # User is not in a chat
         if not user.get('searching'):
             await message.reply_text("❌ You're not in a chat. Use /search to find a partner!")
         return
-    
-    # Forward message to partner ANONYMOUSLY
+
+    # Increment message count for skip-threshold tracking
+    await increment_user_msg_count(user_id)
+
     try:
-        # Send typing action
         await client.send_chat_action(partner_id, ChatAction.TYPING)
-        
-        # Forward message anonymously by reconstructing it without metadata
+
         if message.text:
-            # Text message
             await client.send_message(partner_id, message.text)
         elif message.photo:
-            # Photo message
             await client.send_photo(partner_id, message.photo.file_id, caption=message.caption or "")
         elif message.video:
-            # Video message
             await client.send_video(partner_id, message.video.file_id, caption=message.caption or "")
         elif message.audio:
-            # Audio message
             await client.send_audio(partner_id, message.audio.file_id, caption=message.caption or "")
         elif message.voice:
-            # Voice message
             await client.send_voice(partner_id, message.voice.file_id, caption=message.caption or "")
         elif message.document:
-            # Document message
             await client.send_document(partner_id, message.document.file_id, caption=message.caption or "")
         elif message.sticker:
-            # Sticker
             await client.send_sticker(partner_id, message.sticker.file_id)
         elif message.animation:
-            # GIF/Animation
             await client.send_animation(partner_id, message.animation.file_id, caption=message.caption or "")
         elif message.video_note:
-            # Video note (round video)
             await client.send_video_note(partner_id, message.video_note.file_id)
         else:
-            # Unsupported message type
             await message.reply_text("❌ This message type is not supported.")
             return
-        
-        # Log message in database
-        message_text = message.text or message.caption or "[Media]"
-        await log_message(user_id, partner_id, user_id, message_text)
-        
-        # Log to DB channel (sample only, not all messages to avoid spam)
-        # Only log every 10th message to reduce channel spam
-        if random.randint(1, 10) == 1:  # 10% sampling
+
+        msg_text = message.text or message.caption or "[Media]"
+        await log_message(user_id, partner_id, user_id, msg_text)
+
+        if random.randint(1, 10) == 1:
             partner = await get_user(partner_id)
-            log_text = f"💬 <b>Message Sample</b>\n\n"
-            log_text += f"From: {user_id} (@{user.get('username', 'N/A')})\n"
-            log_text += f"To: {partner_id} (@{partner.get('username', 'N/A')})\n"
-            log_text += f"Type: {message.media or 'text'}"
-            
-            await client.send_to_channel(log_text)
-            
+            await client.send_to_channel(
+                f"💬 <b>Message Sample</b>\n\n"
+                f"From: {user_id} (@{user.get('username', 'N/A')})\n"
+                f"To: {partner_id} (@{(partner or {}).get('username', 'N/A')})\n"
+                f"Type: {message.media or 'text'}"
+            )
+
     except Exception as e:
-        # Partner might have blocked the bot or chat ended
-        await message.reply_text("❌ Failed to send message. Your partner may have left. Use /search to find a new partner.")
+        await message.reply_text("❌ Failed to send. Your partner may have left. Use /search.")
         await clear_user_chat_state(user_id)
         if partner_id:
             await clear_user_chat_state(partner_id)
