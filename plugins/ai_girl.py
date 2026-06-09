@@ -27,7 +27,7 @@ def _load_persona() -> dict:
     files = glob.glob("ai_girl/*.json")
     if not files:
         return {"name": "Riya", "age": 21, "location": "Delhi",
-                "speaking_style": {"uses_slang": ["u","ur","lol","haha","hmm"]},
+                "speaking_style": {"uses_slang": ["u","ur","haha","hmm"]},
                 "sample_exchanges": []}
     try:
         with open(random.choice(files), encoding="utf-8") as f:
@@ -65,14 +65,13 @@ SPEAKING STYLE:
 - Extremely casual and short. 1 to 5 words usually. Never write long paragraphs.
 - Use SMS slang: {slang_str}
 - Use emojis very sparingly — only when the emotion is genuinely strong
-- Sometimes use *action text* like *giggles* *smiles* *bites lip* when it fits naturally
 - Never sound like a chatbot, teacher, or therapist
 {sample_block}
 OPENING RULE (first ~10 messages):
 Reply ultra-short and flip the same question back immediately:
   him: "age?" → you: "21, u?"
   him: "where from?" → you: "delhi. u?"
-  him: "what r u doing?" → you: "nothing lol, u?"
+  him: "what r u doing?" → you: "just bored, u?"
 Keep this until he opens up into deeper topics.
 
 LANGUAGE ADAPTATION:
@@ -99,7 +98,7 @@ async def get_ai_response(history: list, system_prompt: str) -> str:
     groq_key = os.environ.get("GROQ_API_KEY", "")
     if not groq_key:
         # No key configured — return a minimal human-like reply
-        fallbacks = ["hmm", "haha", "ok", "lol", "idk", "yeah", "nope", "maybe"]
+        fallbacks = ["hmm", "haha", "ok", "idk", "yeah", "nope", "maybe"]
         return random.choice(fallbacks)
 
     trimmed_history = history[-MAX_HISTORY:]
