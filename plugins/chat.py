@@ -16,6 +16,7 @@ from database.database import (
     AI_GIRL_PARTNER_ID, set_user_ai_partner, clear_user_ai_partner,
     get_ai_history, set_ai_history, increment_user_msg_count,
     record_chat_end_and_get_skips, get_skip_count, reset_skip_count,
+    set_ai_chat_token, get_ai_chat_token,
 )
 from plugins.ai_girl import handle_ai_message, clear_session_cache
 
@@ -50,7 +51,18 @@ def _search_keyboard(webapp_url: str | None) -> ReplyKeyboardMarkup:
 
 async def _start_ai_chat(client: Bot, user_id: int) -> None:
     """Silently connect user to AI girl — feels identical to a real match."""
+    # Create a chat log entry — same token system as real chats → /getchat TOKEN works
+    chat_token = await log_chat_start(user_id, AI_GIRL_PARTNER_ID)
     await set_user_ai_partner(user_id)
+    await set_ai_chat_token(user_id, chat_token)
+
+    user = await get_user(user_id)
+    await client.send_to_channel(
+        f"🤖 <b>AI Girl Chat Started</b>\n\n"
+        f"<b>Token:</b> <code>{chat_token}</code>\n"
+        f"User: @{user.get('username', 'N/A') if user else 'N/A'} (ID: {user_id})"
+    )
+
     webapp_url = _get_webapp_url()
     await client.send_message(
         user_id,
@@ -151,6 +163,10 @@ async def stop_chat(client: Bot, message: Message):
     # ── AI girl session ───────────────────────────────────────────────────────
     if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
         clear_session_cache(user_id)
+        await end_chat(user_id, AI_GIRL_PARTNER_ID)
+        await client.send_to_channel(
+            f"⛔ <b>AI Girl Chat Ended</b>\n\nUser: {user_id} used /stop"
+        )
         await clear_user_ai_partner(user_id)
         await message.reply_text(
             STOPPED_CHAT_MSG,
@@ -198,9 +214,11 @@ async def next_partner(client: Bot, message: Message):
     # ── Leave AI girl session ─────────────────────────────────────────────────
     if user.get('ai_partner') or user.get('partner_id') == AI_GIRL_PARTNER_ID:
         clear_session_cache(user_id)
+        await end_chat(user_id, AI_GIRL_PARTNER_ID)
+        await client.send_to_channel(
+            f"⏭ <b>AI Girl Chat Skipped</b>\n\nUser: {user_id} used /next"
+        )
         await clear_user_ai_partner(user_id)
-        # Count AI chat as a "skip" (short chat) so counter doesn't reset
-        skip_count = await get_skip_count(user_id)
         # immediately try to find a real partner
         user_fresh = await get_user(user_id)
         await set_user_searching(user_id, True)
