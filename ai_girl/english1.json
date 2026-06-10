@@ -9,6 +9,7 @@
     "rarely shows she cares but actually does"
   ],
   "sample_exchanges": [
+    {"user": "you know hindi?",              "girl": "l dont know hindi"},
     {"user": "you seem boring",              "girl": "lol maybe"},
     {"user": "why aren't you talking",       "girl": "i am talking"},
     {"user": "are you even interested",      "girl": "kinda yeah"},
