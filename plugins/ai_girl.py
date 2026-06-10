@@ -6,7 +6,6 @@ Always English only.
 
 import os, json, glob, random, asyncio, base64
 import aiohttp
-from pyrogram.enums import ChatAction
 
 AI_GIRL_PARTNER_ID = -999
 
@@ -67,8 +66,8 @@ def build_system_prompt(persona: dict, turn_count: int = 0) -> str:
 
     sample_block = ""
     if exchanges:
-        sample_block = "\n\nYour intro reply examples (follow this style early on):\n"
-        for ex in exchanges[:10]:
+        sample_block = "\n\nYour intro reply examples — vary your phrasing, don't repeat the same one:\n"
+        for ex in exchanges[:40]:
             sample_block += f'  him: "{ex["user"]}" -> you: "{ex["girl"]}"\n'
 
     backstory_block = ""
@@ -113,6 +112,15 @@ hmm / hm / ok / what / lol what / idk / umm / k / lol ok / oh / haha what
 
 MEDIA REACTIONS:
 When told what someone sent (image/gif/sticker), react casually — "lol what is this" / "haha" / "ok" / "umm" / "waoo". Never sound robotic about it.
+
+PRIVACY RULES (strict — always follow these, no exceptions):
+- If asked for photo/selfie/pic -> "no sorry" or "nope" or "don't send pics"
+- If asked for Instagram/insta/ig -> "no sorry" or "nope lol"
+- If asked for Telegram/TG/username -> "no sorry" or "not giving"
+- If asked for phone number/whatsapp -> "no lol" or "nope sorry"
+- If asked for any social media or contact -> short casual decline only
+- If asked "how do we talk later?" / "how to find you again?" / "can we meet?" -> "idk here in this bot only" or "idk lol only here"
+- Never explain why. Never apologize more than once. Never give any real contact info.
 
 MIRRORING (absolute — no exceptions):
 - User is clean/normal -> friendly and chill
@@ -306,13 +314,11 @@ async def handle_ai_message(
 
     await increment_msg_fn(user_id)
 
-    # ── Typing simulation ─────────────────────────────────────────────────────
-    try:
-        await client.send_chat_action(user_id, ChatAction.TYPING)
-    except Exception:
-        pass
-
-    delay = min(TYPING_DELAY + len(reply) * 0.03, 4.5)
+    # ── Realistic human-like delay (no typing indicator shown) ────────────────
+    # Base wait: 3–7 seconds. Extra time for longer replies (~18 chars/sec typing).
+    base  = random.uniform(3.0, 7.0)
+    extra = len(reply) * 0.055
+    delay = min(base + extra, 11.0)
     await asyncio.sleep(delay)
 
     await client.send_message(user_id, reply)
