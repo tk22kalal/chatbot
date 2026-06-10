@@ -96,9 +96,13 @@ async def try_match_users(client: Bot, user_id: int, user: dict) -> bool:
         await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode=ParseMode.HTML, reply_markup=chat_kb)
         return True
 
-    # No real partner — check if AI girl should activate
+    # No real partner available
     skip_count = await get_skip_count(user_id)
-    if skip_count >= AI_GIRL_SKIP_THRESHOLD:
+    no_one_else = len(available_users) == 0  # user is alone in the whole bot
+
+    if no_one_else or skip_count >= AI_GIRL_SKIP_THRESHOLD:
+        # Reset skip count NOW so after AI girl the next /next → real user search
+        await reset_skip_count(user_id)
         await _start_ai_chat(client, user_id)
         return True   # "matched" (to AI)
 
