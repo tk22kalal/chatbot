@@ -322,3 +322,14 @@ async def get_skip_count(user_id: int) -> int:
 
 async def reset_skip_count(user_id: int) -> None:
     user_data.update_one({'_id': user_id}, {'$set': {'skip_count': 0}})
+
+
+async def set_ai_chat_token(user_id: int, token: str) -> None:
+    """Store the chat log token for an active AI girl session."""
+    user_data.update_one({'_id': user_id}, {'$set': {'ai_chat_token': token}})
+
+
+async def get_ai_chat_token(user_id: int):
+    """Return the chat log token for the current AI girl session, or None."""
+    user = user_data.find_one({'_id': user_id})
+    return user.get('ai_chat_token') if user else None
