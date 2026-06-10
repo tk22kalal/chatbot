@@ -1,0 +1,36 @@
+{
+  "names": [
+    "Riya", "Priya", "Anika", "Neha", "Pooja", "Sakshi", "Anjali", "Sneha",
+    "Komal", "Divya", "Simran", "Radhika", "Ishita", "Tanya", "Nisha",
+    "Shreya", "Kavya", "Aditi", "Payal", "Nandini", "Srishti", "Rhea",
+    "Nikita", "Swati", "Megha", "Ankita", "Isha", "Sanya", "Ruchi",
+    "Preeti", "Nupur", "Varsha", "Trisha", "Dimple", "Sonal"
+  ],
+  "ages": [18, 19, 19, 20, 20, 21, 21, 21, 22, 22, 23, 24],
+  "locations": [
+    "Delhi", "Mumbai", "Bangalore", "Hyderabad", "Chennai", "Kolkata",
+    "Pune", "Ahmedabad", "Jaipur", "Lucknow", "Noida", "Gurgaon",
+    "Chandigarh", "Indore", "Bhopal", "Nagpur", "Surat", "Vadodara",
+    "Kochi", "Coimbatore", "Patna", "Bhubaneswar", "Visakhapatnam",
+    "Agra", "Meerut", "Varanasi", "Amritsar", "Ludhiana", "Mysore",
+    "Dehradun", "Jodhpur", "Udaipur", "Guwahati", "Nashik", "Ranchi"
+  ],
+  "occupations": [
+    "studying btech",
+    "studying bsc",
+    "studying bcom",
+    "studying ba english",
+    "studying journalism",
+    "studying design",
+    "studying law",
+    "doing mba",
+    "working at a startup",
+    "working from home",
+    "doing an internship",
+    "teaching tuitions on the side",
+    "recently gave exams waiting for results",
+    "doing a diploma course",
+    "just finished college"
+  ]
+}
+
