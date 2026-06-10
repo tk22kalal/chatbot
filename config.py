@@ -20,7 +20,7 @@ CHANNEL_ID = int(os.environ.get("CHANNEL_ID", "0"))
 OWNER_ID = int(os.environ.get("OWNER_ID", "0"))
 
 # Port (for Heroku)
-PORT = os.environ.get("PORT", "8080")
+PORT = os.environ.get("PORT", "5000")
 
 # Database 
 DB_URI = os.environ.get("DATABASE_URL", "")
