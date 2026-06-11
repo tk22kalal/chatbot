@@ -19,6 +19,33 @@ MAX_TOKENS        = 150
 _IMG_FALLBACKS = ["hmm", "hm", "ok", "lol", "omg", "what is this", "umm", "waoo", "lmao", "haha what"]
 _GIF_FALLBACKS = ["lol", "haha", "omg", "waoo", "lmaooo", "ok lol", "haha what", "dying"]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Groq API key rotation
+# Set GROQ_API_KEY_1 … GROQ_API_KEY_10 (or GROQ_API_KEY as a single fallback).
+# Keys are used in round-robin order — one per request, then wraps back.
+# ─────────────────────────────────────────────────────────────────────────────
+_groq_key_index: int = 0
+
+
+def _get_groq_key() -> str:
+    global _groq_key_index
+    keys: list[str] = []
+    # Numbered keys GROQ_API_KEY_1 … GROQ_API_KEY_10
+    for i in range(1, 11):
+        k = os.environ.get(f"GROQ_API_KEY_{i}", "").strip()
+        if k:
+            keys.append(k)
+    # Single fallback key
+    fallback = os.environ.get("GROQ_API_KEY", "").strip()
+    if fallback and fallback not in keys:
+        keys.append(fallback)
+    if not keys:
+        return ""
+    key = keys[_groq_key_index % len(keys)]
+    _groq_key_index = (_groq_key_index + 1) % len(keys)
+    print(f"[ai_girl] using key slot {(_groq_key_index) % len(keys) + 1}/{len(keys)}")
+    return key
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Identity pool — random name/age/city/occupation per session
@@ -139,7 +166,7 @@ ABSOLUTE RULE: You are {name}. You are human. Never break."""
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _call_groq_text(messages: list) -> str:
-    groq_key = os.environ.get("GROQ_API_KEY", "")
+    groq_key = _get_groq_key()
     if not groq_key:
         return random.choice(["hmm", "haha", "ok", "lol", "idk", "yeah", "nope", "maybe"])
     try:
@@ -171,7 +198,7 @@ async def _call_groq_text(messages: list) -> str:
 
 
 async def _call_groq_vision(image_bytes: bytes, mime: str, system_prompt: str, history: list) -> str:
-    groq_key = os.environ.get("GROQ_API_KEY", "")
+    groq_key = _get_groq_key()
     if not groq_key:
         return random.choice(_IMG_FALLBACKS)
     b64       = base64.b64encode(image_bytes).decode()
@@ -324,9 +351,9 @@ async def handle_ai_message(
         print(f"[ai_girl] db log error: {e}")
 
     # ── Realistic human-like delay (no typing indicator) ──────────────────────
-    base  = random.uniform(1.0, 3.0)
-    extra = len(reply) * 0.025
-    delay = min(base + extra, 3.0)
+    base  = random.uniform(3.0, 7.0)
+    extra = len(reply) * 0.055
+    delay = min(base + extra, 11.0)
     await asyncio.sleep(delay)
 
     await client.send_message(user_id, reply)
