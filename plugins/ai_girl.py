@@ -18,31 +18,9 @@ MAX_TOKENS        = 150
 _IMG_FALLBACKS = ["umm", "waoo", "nice", "omg", "ohh", "yeah", "like it"]
 
 # ──────────────────────────────────────────────────────────────────[...]
-# Groq API key rotation
-# Set GROQ_API_KEY_1 … GROQ_API_KEY_10 (or GROQ_API_KEY as a single fallback).
-# Keys are used in round-robin order — one per request, then wraps back.
+# Groq API key rotation — keys fetched from Supabase in round-robin order
 # ──────────────────────────────────────────────────────────────────[...]
-_groq_key_index: int = 0
-
-
-def _get_groq_key() -> str:
-    global _groq_key_index
-    keys: list[str] = []
-    # Numbered keys GROQ_API_KEY_1 … GROQ_API_KEY_10
-    for i in range(1, 11):
-        k = os.environ.get(f"GROQ_API_KEY_{i}", "").strip()
-        if k:
-            keys.append(k)
-    # Single fallback key
-    fallback = os.environ.get("GROQ_API_KEY", "").strip()
-    if fallback and fallback not in keys:
-        keys.append(fallback)
-    if not keys:
-        return ""
-    key = keys[_groq_key_index % len(keys)]
-    _groq_key_index = (_groq_key_index + 1) % len(keys)
-    print(f"[ai_girl] using key slot {(_groq_key_index) % len(keys) + 1}/{len(keys)}")
-    return key
+from supabase_keys import get_next_key as _get_groq_key
 
 
 # ──────────────────────────────────────────────────────────────────[...]
