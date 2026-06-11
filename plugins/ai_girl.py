@@ -11,7 +11,7 @@ import aiohttp
 AI_GIRL_PARTNER_ID = -999
 
 GROQ_API_URL      = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_TEXT_MODEL   = "llama-3.3-70b-versatile"
+GROQ_TEXT_MODEL   = "llama-3.1-8b-instant"
 MAX_HISTORY       = 24
 MAX_TOKENS        = 150
 
