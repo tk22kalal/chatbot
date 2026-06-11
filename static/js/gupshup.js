@@ -4,18 +4,20 @@
 'use strict';
 
 /* ── State ─────────────────────────────────────────── */
-let ws            = null;
-let currentGroup  = null;
-let userId        = null;
-let userName      = null;
-let userPhoto     = null;
-let typingTimeout = null;
-let reconnectTimer= null;
-let reconnectDelay= 1500;
-let emojiOpen     = false;
-let lastMsgUserId = null;
-let isNearBottom  = true;
-let drawerOpen    = false;
+let ws              = null;
+let currentGroup    = null;
+let userId          = null;
+let userName        = null;
+let userPhoto       = null;
+let typingTimeout   = null;
+let reconnectTimer  = null;
+let reconnectDelay  = 1500;
+let emojiOpen       = false;
+let lastMsgUserId   = null;
+let isNearBottom    = true;
+let drawerOpen      = false;
+let historyReceived = false;   // true once the first 'history' msg arrives
+let loadTimer       = null;    // safety timeout for stuck spinner
 
 /* ── Emoji set ─────────────────────────────────────── */
 const EMOJIS = [
@@ -209,6 +211,39 @@ async function uploadImage(file) {
 /* ══════════════════════════════════════════════════════
    WEBSOCKET
 ══════════════════════════════════════════════════════ */
+function _startLoadTimer() {
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => {
+    // If history still hasn't arrived after 8 s, show a retry prompt
+    if (historyReceived) return;
+    const c = $('messages-container');
+    const spin = c.querySelector('.loading-spinner');
+    if (!spin) return;
+    spin.innerHTML =
+      '<div class="spinner-text" style="color:#f43f5e">Failed to load messages</div>' +
+      '<button onclick="retryJoin()" style="margin-top:10px;padding:8px 20px;' +
+      'border:none;border-radius:20px;background:#6c63ff;color:#fff;cursor:pointer;font-size:14px">' +
+      '↺ Tap to retry</button>';
+  }, 8000);
+}
+
+function retryJoin() {
+  if (!currentGroup) return;
+  const c = $('messages-container');
+  c.innerHTML = '';
+  const spin = document.createElement('div');
+  spin.className = 'loading-spinner';
+  spin.innerHTML = '<div class="spinner-ring"></div><div class="spinner-text">Loading messages…</div>';
+  c.appendChild(spin);
+  historyReceived = false;
+  _startLoadTimer();
+  if (ws?.readyState === WebSocket.OPEN) {
+    sendRaw({action:'join', user_id:userId, group:currentGroup});
+  } else {
+    initWebSocket();
+  }
+}
+
 function initWebSocket() {
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -217,7 +252,14 @@ function initWebSocket() {
   ws.onopen = () => {
     reconnectDelay = 1500;
     $('conn-banner').classList.remove('show');
-    if (currentGroup && userId) sendRaw({action:'join', user_id:userId, group:currentGroup});
+    if (currentGroup && userId) {
+      // If we already have messages loaded (reconnect after drop), re-join silently
+      // without showing the spinner again — just sync the online count.
+      const hasMessages = $('messages-container').querySelector('.message');
+      if (hasMessages) historyReceived = true;
+      sendRaw({action:'join', user_id:userId, group:currentGroup});
+      if (!hasMessages) _startLoadTimer();
+    }
   };
   ws.onmessage = e => { try { handleMsg(JSON.parse(e.data)); } catch(_) {} };
   ws.onclose = ws.onerror = () => {
@@ -225,8 +267,8 @@ function initWebSocket() {
     if (currentGroup) $('conn-banner').classList.add('show');
     clearTimeout(reconnectTimer);
     reconnectTimer = setTimeout(() => {
-      initWebSocket();
       reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
+      initWebSocket();
     }, reconnectDelay);
   };
 }
@@ -238,6 +280,8 @@ function sendRaw(obj) {
 function handleMsg(data) {
   switch(data.type) {
     case 'history':
+      historyReceived = true;
+      clearTimeout(loadTimer);
       renderHistory(data.messages || []);
       if (data.online_count !== undefined) setOnlineCount(data.online_count);
       break;
@@ -275,8 +319,9 @@ function handleMsg(data) {
    GROUP JOIN / LEAVE
 ══════════════════════════════════════════════════════ */
 function joinGroup(name) {
-  currentGroup  = name;
-  lastMsgUserId = null;
+  currentGroup    = name;
+  lastMsgUserId   = null;
+  historyReceived = false;
   $('group-title').textContent  = name;
   $('group-avatar').src         = '/static/images/default-avatar.svg';
   setOnlineCount(0);
@@ -289,15 +334,21 @@ function joinGroup(name) {
   spin.innerHTML = '<div class="spinner-ring"></div><div class="spinner-text">Loading messages…</div>';
   c.appendChild(spin);
 
-  if (!ws || ws.readyState !== WebSocket.OPEN) initWebSocket();
-  else sendRaw({action:'join', user_id:userId, group:name});
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    initWebSocket();   // onopen will send the join + start timer
+  } else {
+    sendRaw({action:'join', user_id:userId, group:name});
+    _startLoadTimer();
+  }
 }
 
 function leaveGroup() {
+  clearTimeout(loadTimer);
   if (currentGroup) {
     sendRaw({action:'leave', user_id:userId, group:currentGroup});
-    currentGroup  = null;
-    lastMsgUserId = null;
+    currentGroup    = null;
+    lastMsgUserId   = null;
+    historyReceived = false;
   }
   $('conn-banner').classList.remove('show');
   showScreen('groupSelection');
