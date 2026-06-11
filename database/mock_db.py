@@ -112,26 +112,63 @@ class MockCollection:
                 values.add(doc[field])
         return list(values)
     
+    def _field_matches(self, doc_val, condition):
+        """Evaluate a MongoDB-style condition dict against a document field value."""
+        if not isinstance(condition, dict):
+            return doc_val == condition
+        for op, operand in condition.items():
+            if op == '$lt':
+                try:
+                    if not (doc_val < operand):
+                        return False
+                except TypeError:
+                    return False
+            elif op == '$lte':
+                try:
+                    if not (doc_val <= operand):
+                        return False
+                except TypeError:
+                    return False
+            elif op == '$gt':
+                try:
+                    if not (doc_val > operand):
+                        return False
+                except TypeError:
+                    return False
+            elif op == '$gte':
+                try:
+                    if not (doc_val >= operand):
+                        return False
+                except TypeError:
+                    return False
+            elif op == '$in':
+                if doc_val not in operand:
+                    return False
+            elif op == '$ne':
+                if doc_val == operand:
+                    return False
+        return True
+
     def delete_many(self, query):
-        """Delete multiple documents matching query"""
+        """Delete multiple documents matching query (supports $lt/$gt/$in etc.)"""
         to_delete = []
         for doc_id, doc in self.data.items():
             match = True
             for key, value in query.items():
                 if key.startswith('$'):
                     continue
-                if doc.get(key) != value:
+                if not self._field_matches(doc.get(key), value):
                     match = False
                     break
             if match:
                 to_delete.append(doc_id)
-        
+
         for doc_id in to_delete:
             del self.data[doc_id]
-        
+
         if to_delete:
             self.parent_db.save()
-        
+
         return len(to_delete)
 
 class MockCursor:
