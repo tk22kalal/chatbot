@@ -179,11 +179,18 @@ async def websocket_handler(request):
                         conn_key = f"{user_id}_{group_name}"
                         _register(conn_key, group_name, ws)
 
-                        user = await _cached_user(user_id)
-                        recent = await get_group_messages(group_name, limit=50)
+                        # Always send history — even empty — so the client
+                        # spinner is never permanently stuck after a restart.
+                        try:
+                            user = await _cached_user(user_id)
+                            recent = await get_group_messages(group_name, limit=50)
+                        except Exception as db_err:
+                            print(f"[ws] join DB error for group={group_name}: {db_err}")
+                            user = None
+                            recent = []
+
                         online_count = get_online_count(group_name)
 
-                        # Send history to joining user
                         await ws.send_str(json.dumps({
                             'type': 'history',
                             'messages': recent,
