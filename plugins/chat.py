@@ -72,20 +72,20 @@ async def _start_ai_chat(client: Bot, user_id: int) -> None:
     )
 
 
-# ── Match users OR fall back to AI ───────────────────────────────────────────
+# ── Match users (real only) ───────────────────────────────────────────────────
 
 async def try_match_users(client: Bot, user_id: int, user: dict) -> bool:
     """
-    Try to find a real partner.
-    If none found and user has hit the skip threshold → connect to AI girl.
-    Returns True if matched (real or AI), False if queued.
+    Try to find a real partner only.
+    Returns True if a real match was made, False if still queued.
+    AI girl fallback is handled separately via _delayed_ai_fallback().
     """
-    searching_users   = await get_searching_users()
-    available_users   = [u for u in searching_users if u['_id'] != user_id]
+    searching_users = await get_searching_users()
+    available_users = [u for u in searching_users if u['_id'] != user_id]
 
     if available_users:
-        partner       = random.choice(available_users)
-        partner_id    = partner['_id']
+        partner    = random.choice(available_users)
+        partner_id = partner['_id']
 
         await set_user_partner(user_id, partner_id)
         await set_user_partner(partner_id, user_id)
@@ -102,23 +102,44 @@ async def try_match_users(client: Bot, user_id: int, user: dict) -> bool:
             f"<b>User2:</b> @{partner.get('username', 'N/A')} (ID: {partner_id})"
         )
 
-        webapp_url    = _get_webapp_url()
-        chat_kb       = _chat_keyboard(webapp_url)
+        webapp_url = _get_webapp_url()
+        chat_kb    = _chat_keyboard(webapp_url)
         await client.send_message(user_id,    PARTNER_FOUND_MSG, parse_mode=ParseMode.HTML, reply_markup=chat_kb)
         await client.send_message(partner_id, PARTNER_FOUND_MSG, parse_mode=ParseMode.HTML, reply_markup=chat_kb)
         return True
 
-    # No real partner available
-    skip_count = await get_skip_count(user_id)
-    no_one_else = len(available_users) == 0  # user is alone in the whole bot
+    return False  # queued — no real partner right now
 
-    if no_one_else or skip_count >= AI_GIRL_SKIP_THRESHOLD:
-        # Reset skip count NOW so after AI girl the next /next → real user search
+
+# ── 10-second AI girl fallback ────────────────────────────────────────────────
+
+async def _delayed_ai_fallback(client: Bot, user_id: int) -> None:
+    """
+    Wait 10 seconds for a real partner.
+    If the user is still searching after that AND:
+      - they have ≥ AI_GIRL_SKIP_THRESHOLD consecutive short-chat skips, OR
+      - nobody else is online at all
+    → silently connect them to AI girl.
+    If a real user matched them during the wait, do nothing.
+    """
+    await asyncio.sleep(10)
+
+    user = await get_user(user_id)
+    if not user:
+        return
+    # Already matched with a real user or stopped searching — nothing to do
+    if not user.get('searching') or user.get('partner_id'):
+        return
+
+    skip_count      = await get_skip_count(user_id)
+    searching_users = await get_searching_users()
+    available_users = [u for u in searching_users if u['_id'] != user_id]
+    nobody_online   = len(available_users) == 0
+
+    if nobody_online or skip_count >= AI_GIRL_SKIP_THRESHOLD:
+        await set_user_searching(user_id, False)
         await reset_skip_count(user_id)
         await _start_ai_chat(client, user_id)
-        return True   # "matched" (to AI)
-
-    return False   # still queued
 
 
 # ── /search ───────────────────────────────────────────────────────────────────
@@ -149,6 +170,8 @@ async def search_partner(client: Bot, message: Message):
 
     if not matched:
         await message.reply_text(SEARCHING_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
+        # After 10 s with no real match, fall back to AI girl if conditions met
+        asyncio.ensure_future(_delayed_ai_fallback(client, user_id))
 
 
 # ── /stop ─────────────────────────────────────────────────────────────────────
@@ -219,12 +242,13 @@ async def next_partner(client: Bot, message: Message):
             f"⏭ <b>AI Girl Chat Skipped</b>\n\nUser: {user_id} used /next"
         )
         await clear_user_ai_partner(user_id)
-        # immediately try to find a real partner
+        # Search for a real partner; if none found, wait 10 s then try AI girl again
         user_fresh = await get_user(user_id)
         await set_user_searching(user_id, True)
         matched = await try_match_users(client, user_id, user_fresh or user)
         if not matched:
             await message.reply_text(SEARCHING_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
+            asyncio.ensure_future(_delayed_ai_fallback(client, user_id))
         return
 
     partner_id = user.get('partner_id')
@@ -247,12 +271,13 @@ async def next_partner(client: Bot, message: Message):
     # Notify partner
     await client.send_message(partner_id, PARTNER_LEFT_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
 
-    # Auto-search for current user
+    # Auto-search for current user; if no real match, wait 10 s then try AI girl
     await set_user_searching(user_id, True)
     user_fresh = await get_user(user_id)
     matched = await try_match_users(client, user_id, user_fresh or user)
     if not matched:
-        await message.reply_text(SEARCHING_MSG)
+        await message.reply_text(SEARCHING_MSG, reply_markup=_search_keyboard(_get_webapp_url()))
+        asyncio.ensure_future(_delayed_ai_fallback(client, user_id))
 
 
 # ── Message forwarder (real chat OR AI girl) ──────────────────────────────────
