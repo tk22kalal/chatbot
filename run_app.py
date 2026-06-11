@@ -7,7 +7,12 @@ from config import PORT
 async def main():
     """Run both the bot and web server in the same event loop"""
     from config import TG_BOT_TOKEN, APP_ID, API_HASH
-    
+    from supabase_keys import refresh_keys, start_background_refresh
+
+    # Load Groq API keys from Supabase before anything else starts
+    await refresh_keys()
+    start_background_refresh()
+
     app = await create_app()
     runner = web.AppRunner(app)
     await runner.setup()
