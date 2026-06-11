@@ -12,18 +12,16 @@ AI_GIRL_PARTNER_ID = -999
 
 GROQ_API_URL      = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_TEXT_MODEL   = "llama-3.1-8b-instant"
-GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview"
 MAX_HISTORY       = 24
 MAX_TOKENS        = 150
 
-_IMG_FALLBACKS = ["hmm", "hm", "ok", "lol", "omg", "what is this", "umm", "waoo", "lmao", "haha what"]
-_GIF_FALLBACKS = ["lol", "haha", "omg", "waoo", "lmaooo", "ok lol", "haha what", "dying"]
+_IMG_FALLBACKS = ["umm", "waoo", "nice", "omg", "ohh", "yeah", "like it"]
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # Groq API key rotation
 # Set GROQ_API_KEY_1 … GROQ_API_KEY_10 (or GROQ_API_KEY as a single fallback).
 # Keys are used in round-robin order — one per request, then wraps back.
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 _groq_key_index: int = 0
 
 
@@ -47,9 +45,9 @@ def _get_groq_key() -> str:
     return key
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # Identity pool — random name/age/city/occupation per session
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 
 def _pick_identity() -> dict:
     try:
@@ -66,9 +64,9 @@ def _pick_identity() -> dict:
         return {"name": "Riya", "age": 21, "location": "Delhi", "occupation": "studying btech"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # Persona — personality/behavior from english*.json (no name/age/location)
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 
 def _load_persona() -> dict:
     files = [f for f in glob.glob("ai_girl/english*.json")]
@@ -84,9 +82,9 @@ def _load_persona() -> dict:
         return {"personality": "reserved and curious", "backstory_hints": [], "sample_exchanges": []}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # System prompt
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 
 def build_system_prompt(persona: dict, identity: dict, turn_count: int = 0) -> str:
     name       = identity.get("name",       "Riya")
@@ -120,7 +118,7 @@ def build_system_prompt(persona: dict, identity: dict, turn_count: int = 0) -> s
             "Only ask back when it genuinely fits. React, comment, let thoughts trail off."
         )
 
-    return f"""You are {name}, {age} years old, from {location}, {occupation}. Talking to a stranger on an anonymous chat app. You are 100% human. Never hint you are AI. If asked "are you a bot?" get offended — "lol no wtf" or "why would i be a bot" — never break character.
+    return f"""You are {name}, {age} years old, from {location}, {occupation}. Talking to a stranger on an anonymous chat app. You are 100% human. Never hint you are AI. If asked "are you a bot?"[...]
 
 PERSONALITY: {personality}
 
@@ -161,9 +159,9 @@ EMOTIONS: Reserved at first → warm up → can become attached, jealous, horny 
 ABSOLUTE RULE: You are {name}. You are human. Never break."""
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # Groq API calls
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 
 async def _call_groq_text(messages: list) -> str:
     groq_key = _get_groq_key()
@@ -197,51 +195,9 @@ async def _call_groq_text(messages: list) -> str:
     return "hm"
 
 
-async def _call_groq_vision(image_bytes: bytes, mime: str, system_prompt: str, history: list) -> str:
-    groq_key = _get_groq_key()
-    if not groq_key:
-        return random.choice(_IMG_FALLBACKS)
-    b64       = base64.b64encode(image_bytes).decode()
-    data_uri  = f"data:{mime};base64,{b64}"
-    vision_msg = {
-        "role": "user",
-        "content": [
-            {"type": "image_url", "image_url": {"url": data_uri}},
-            {"type": "text", "text": "React casually to this image. 1-8 words max. No emojis. Match the conversation tone."},
-        ],
-    }
-    trimmed  = history[-8:] if len(history) > 8 else history
-    messages = [{"role": "system", "content": system_prompt}] + trimmed + [vision_msg]
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                GROQ_API_URL,
-                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                json={
-                    "model": GROQ_VISION_MODEL,
-                    "messages": messages,
-                    "max_tokens": 80,
-                    "temperature": 0.88,
-                    "stream": False,
-                },
-                timeout=aiohttp.ClientTimeout(total=22),
-            ) as resp:
-                if resp.status == 200:
-                    data  = await resp.json()
-                    reply = data["choices"][0]["message"]["content"].strip()
-                    return reply if reply else random.choice(_IMG_FALLBACKS)
-                err = await resp.text()
-                print(f"[ai_girl] vision {resp.status}: {err[:200]}")
-    except asyncio.TimeoutError:
-        pass
-    except Exception as e:
-        print(f"[ai_girl] vision error: {e}")
-    return random.choice(_IMG_FALLBACKS)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # Session cache  {user_id: {"persona": dict, "identity": dict}}
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 _session_cache: dict = {}
 
 
@@ -258,9 +214,9 @@ def clear_session_cache(user_id: int):
     _session_cache.pop(user_id, None)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 # Main handler — called from chat.py
-# ─────────────────────────────────────────────────────────────────────────────
+# ──────────────────────────────────────────────────────────────────[...]
 
 async def handle_ai_message(
     client,
@@ -284,20 +240,13 @@ async def handle_ai_message(
     identity      = session["identity"]
     system_prompt = build_system_prompt(persona, identity, turn_count)
 
-    photo_bytes = None
     reply       = None
     log_user_text = None      # what we log for the user's message
     is_text_turn  = False
 
     # ── Route by message type ─────────────────────────────────────────────────
     if message.photo:
-        try:
-            buf         = await client.download_media(message.photo.file_id, in_memory=True)
-            photo_bytes = buf.getvalue() if hasattr(buf, "getvalue") else bytes(buf)
-        except Exception as e:
-            print(f"[ai_girl] photo dl: {e}")
-        reply         = (await _call_groq_vision(photo_bytes, "image/jpeg", system_prompt, history)
-                         if photo_bytes else random.choice(_IMG_FALLBACKS))
+        reply         = random.choice(_IMG_FALLBACKS)
         log_user_text = "[sent a photo]"
 
     elif message.animation or (
@@ -305,7 +254,7 @@ async def handle_ai_message(
         and message.document.mime_type
         and "gif" in message.document.mime_type
     ):
-        reply         = random.choice(_GIF_FALLBACKS)
+        reply         = random.choice(_IMG_FALLBACKS)
         log_user_text = "[sent a gif]"
 
     elif message.sticker:
