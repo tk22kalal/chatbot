@@ -1,0 +1,99 @@
+"""
+Fetches Groq API keys from Supabase `profiles.groq_api_key` column
+and serves them in round-robin order.
+
+Requires one-time Supabase SQL setup (run in Supabase SQL Editor):
+
+    CREATE OR REPLACE FUNCTION get_all_groq_keys()
+    RETURNS TABLE(groq_api_key TEXT)
+    LANGUAGE sql
+    SECURITY DEFINER
+    AS $$
+      SELECT groq_api_key FROM profiles
+      WHERE groq_api_key IS NOT NULL AND groq_api_key != '';
+    $$;
+
+    GRANT EXECUTE ON FUNCTION get_all_groq_keys() TO anon;
+"""
+
+import asyncio
+import aiohttp
+import os
+
+SUPABASE_URL = "https://txhxgmryxsebqfxoocos.supabase.co"
+SUPABASE_KEY = "sb_publishable_Rp_naWKL3nPS-6nlOx1LHw_40Rc4T1M"
+
+_keys: list[str] = []
+_index: int = 0
+_lock = asyncio.Lock()
+_refresh_interval = 300  # re-fetch from Supabase every 5 minutes
+
+
+async def _fetch_keys_from_supabase() -> list[str]:
+    """Call the Supabase RPC function and return list of groq keys."""
+    url = f"{SUPABASE_URL}/rest/v1/rpc/get_all_groq_keys"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(url, headers=headers, json={},
+                                    timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    keys = [row["groq_api_key"] for row in data
+                            if row.get("groq_api_key", "").strip().startswith("gsk_")]
+                    print(f"[supabase_keys] Loaded {len(keys)} Groq key(s) from Supabase")
+                    return keys
+                else:
+                    text = await resp.text()
+                    print(f"[supabase_keys] RPC error {resp.status}: {text[:300]}")
+    except Exception as e:
+        print(f"[supabase_keys] Fetch error: {e}")
+    return []
+
+
+async def refresh_keys() -> None:
+    """Fetch fresh keys from Supabase and update the in-memory pool."""
+    global _keys
+    fetched = await _fetch_keys_from_supabase()
+    if fetched:
+        async with _lock:
+            _keys = fetched
+    elif not _keys:
+        # Fall back to env var if Supabase returns nothing
+        env_key = os.environ.get("GROQ_API_KEY", "").strip()
+        if env_key:
+            async with _lock:
+                _keys = [env_key]
+            print("[supabase_keys] Falling back to GROQ_API_KEY env var")
+
+
+async def _background_refresh():
+    """Background task: refresh keys every _refresh_interval seconds."""
+    while True:
+        await asyncio.sleep(_refresh_interval)
+        await refresh_keys()
+
+
+def start_background_refresh():
+    """Call once at app startup to kick off periodic key refresh."""
+    asyncio.ensure_future(_background_refresh())
+
+
+def get_next_key() -> str:
+    """
+    Return the next Groq API key in round-robin order.
+    Thread-safe index bump without async (reads are lock-free).
+    """
+    global _index
+    if not _keys:
+        return os.environ.get("GROQ_API_KEY", "")
+    key = _keys[_index % len(_keys)]
+    _index = (_index + 1) % len(_keys)
+    slot = (_index) % len(_keys) + 1
+    print(f"[supabase_keys] using key slot {slot}/{len(_keys)}")
+    return key
+
