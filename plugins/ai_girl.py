@@ -300,9 +300,9 @@ async def handle_ai_message(
         print(f"[ai_girl] db log error: {e}")
 
     # ── Realistic human-like delay (no typing indicator) ──────────────────────
-    base  = random.uniform(3.0, 7.0)
-    extra = len(reply) * 0.055
-    delay = min(base + extra, 11.0)
+    base  = random.uniform(1.0, 2.0)
+    extra = len(reply) * 0.025
+    delay = min(base + extra, 2.0)
     await asyncio.sleep(delay)
 
     await client.send_message(user_id, reply)
