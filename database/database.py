@@ -228,14 +228,22 @@ async def get_group_messages(group_name: str, limit: int = 50):
     for msg in messages:
         uid = msg['user_id']
         u = users.get(uid, {})
+        # Handle both datetime objects (live DB) and ISO strings (loaded from JSON)
+        ts = msg.get('timestamp')
+        if ts is None:
+            ts_str = datetime.now().isoformat()
+        elif hasattr(ts, 'isoformat'):
+            ts_str = ts.isoformat()
+        else:
+            ts_str = str(ts)
         result.append({
             'user_id':   uid,
             'user_name':  u.get('display_name', f'User{uid}'),
             'user_photo': u.get('photo_url', ''),
-            'text':       msg.get('text', ''),
-            'image_url':  msg.get('image_url', ''),
-            'gif_url':    msg.get('gif_url', ''),
-            'timestamp':  msg['timestamp'].isoformat()
+            'text':       msg.get('text') or '',
+            'image_url':  msg.get('image_url') or '',
+            'gif_url':    msg.get('gif_url') or '',
+            'timestamp':  ts_str
         })
 
     result.reverse()
