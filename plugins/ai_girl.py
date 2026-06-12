@@ -20,7 +20,7 @@ _IMG_FALLBACKS = ["umm", "waoo", "nice", "omg", "ohh", "yeah", "like it"]
 # ──────────────────────────────────────────────────────────────────[...]
 # Groq API key rotation — keys fetched from Supabase in round-robin order
 # ──────────────────────────────────────────────────────────────────[...]
-from supabase_keys import get_next_key as _get_groq_key
+from supabase_keys import get_all_keys as _get_all_groq_keys
 
 
 # ──────────────────────────────────────────────────────────────────[...]
@@ -141,36 +141,52 @@ ABSOLUTE RULE: You are {name}. You are human. Never break."""
 # Groq API calls
 # ──────────────────────────────────────────────────────────────────[...]
 
-async def _call_groq_text(messages: list) -> str:
-    groq_key = _get_groq_key()
-    if not groq_key:
-        return random.choice(["hmm", "haha", "ok", "lol", "idk", "yeah", "nope", "maybe"])
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                GROQ_API_URL,
-                headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
-                json={
-                    "model": GROQ_TEXT_MODEL,
-                    "messages": messages,
-                    "max_tokens": MAX_TOKENS,
-                    "temperature": 0.92,
-                    "top_p": 0.95,
-                    "stream": False,
-                },
-                timeout=aiohttp.ClientTimeout(total=18),
-            ) as resp:
-                if resp.status == 200:
-                    data  = await resp.json()
-                    reply = data["choices"][0]["message"]["content"].strip()
-                    return reply if reply else "hmm"
-                err = await resp.text()
-                print(f"[ai_girl] Groq text {resp.status}: {err[:200]}")
-    except asyncio.TimeoutError:
-        return "..."
-    except Exception as e:
-        print(f"[ai_girl] text error: {e}")
-    return "hm"
+async def _call_groq_text(messages: list):
+    """
+    Try every available Groq key in order.
+    Returns a reply string on success, or None if all keys are rate-limited / unavailable.
+    """
+    keys = _get_all_groq_keys()
+    if not keys:
+        print("[ai_girl] No Groq API keys available.")
+        return None
+
+    for groq_key in keys:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    GROQ_API_URL,
+                    headers={"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"},
+                    json={
+                        "model": GROQ_TEXT_MODEL,
+                        "messages": messages,
+                        "max_tokens": MAX_TOKENS,
+                        "temperature": 0.92,
+                        "top_p": 0.95,
+                        "stream": False,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=18),
+                ) as resp:
+                    if resp.status == 200:
+                        data  = await resp.json()
+                        reply = data["choices"][0]["message"]["content"].strip()
+                        return reply if reply else "hmm"
+                    elif resp.status == 429:
+                        print(f"[ai_girl] Key rate-limited (429), trying next key...")
+                        continue
+                    else:
+                        err = await resp.text()
+                        print(f"[ai_girl] Groq {resp.status}: {err[:200]}")
+                        continue
+        except asyncio.TimeoutError:
+            print("[ai_girl] Groq request timed out, trying next key...")
+            continue
+        except Exception as e:
+            print(f"[ai_girl] key error: {e}")
+            continue
+
+    print("[ai_girl] All Groq API keys exhausted (rate-limited).")
+    return None
 
 
 # ──────────────────────────────────────────────────────────────────[...]
@@ -203,6 +219,7 @@ async def handle_ai_message(
     get_ai_history_fn,
     set_ai_history_fn,
     increment_msg_fn,
+    on_keys_exhausted=None,   # async callable(client, user_id) — called when all Groq keys rate-limited
 ):
     # Lazy import avoids circular dependency at module load time
     from database.database import (
@@ -253,6 +270,14 @@ async def handle_ai_message(
         trimmed  = history[-MAX_HISTORY:]
         msgs     = [{"role": "system", "content": system_prompt}] + trimmed
         reply    = await _call_groq_text(msgs)
+
+        # ── All Groq keys exhausted — end AI session, back to searching ───────
+        if reply is None:
+            clear_session_cache(user_id)
+            if on_keys_exhausted:
+                await on_keys_exhausted(client, user_id)
+            return
+
         history.append({"role": "assistant", "content": reply})
         if len(history) > MAX_HISTORY + 4:
             history = history[-MAX_HISTORY:]
