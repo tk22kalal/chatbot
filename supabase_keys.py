@@ -97,3 +97,15 @@ def get_next_key() -> str:
     print(f"[supabase_keys] using key slot {slot}/{len(_keys)}")
     return key
 
+
+def get_all_keys() -> list:
+    """
+    Return a snapshot of all available keys (Supabase pool + env fallback).
+    Used for retry-on-rate-limit iteration.
+    """
+    env_key = os.environ.get("GROQ_API_KEY", "").strip()
+    result  = list(_keys)
+    if env_key and env_key not in result:
+        result.append(env_key)
+    return result
+
