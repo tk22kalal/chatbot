@@ -146,14 +146,18 @@ async def _delayed_ai_fallback(client: Bot, user_id: int, delay: int = 10) -> No
             # Real users are available — let natural matching take over
             return
 
-        if has_valid_key():
-            # Good key available — start AI girl chat now
+        # Probe every key with a real API call to confirm one actually works
+        from supabase_keys import probe_valid_key
+        key_ok = await probe_valid_key()
+
+        if key_ok:
+            # Confirmed working key — start AI girl chat now
             await set_user_searching(user_id, False)
             await reset_skip_count(user_id)
             await _start_ai_chat(client, user_id)
             return
 
-        # No valid key yet — stay in 'searching' state and retry in 10 s
+        # No working key — stay in 'searching' state and retry in 10 s
         print(f"[fallback] No valid Groq key for user {user_id}, retrying in 10s...")
         await asyncio.sleep(10)
 
