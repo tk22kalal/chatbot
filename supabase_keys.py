@@ -19,6 +19,7 @@ Requires one-time Supabase SQL setup (run in Supabase SQL Editor):
 import asyncio
 import aiohttp
 import os
+import time
 
 SUPABASE_URL = "https://txhxgmryxsebqfxoocos.supabase.co"
 SUPABASE_KEY = "sb_publishable_Rp_naWKL3nPS-6nlOx1LHw_40Rc4T1M"
@@ -27,6 +28,10 @@ _keys: list[str] = []
 _index: int = 0
 _lock = asyncio.Lock()
 _refresh_interval = 300  # re-fetch from Supabase every 5 minutes
+
+# Rate-limit tracking: key -> unix timestamp when it was rate-limited
+_rate_limited: dict = {}
+_RATE_LIMIT_TTL = 62  # seconds before a rate-limited key is considered usable again
 
 
 async def _fetch_keys_from_supabase() -> list[str]:
@@ -108,4 +113,33 @@ def get_all_keys() -> list:
     if env_key and env_key not in result:
         result.append(env_key)
     return result
+
+
+def mark_key_rate_limited(key: str) -> None:
+    """Record that this key just received a 429. It will be skipped for _RATE_LIMIT_TTL seconds."""
+    _rate_limited[key] = time.time()
+    print(f"[supabase_keys] Key rate-limited, marked for {_RATE_LIMIT_TTL}s cooldown.")
+
+
+def has_valid_key() -> bool:
+    """Return True if at least one key is not currently rate-limited."""
+    now  = time.time()
+    keys = get_all_keys()
+    for k in keys:
+        if now - _rate_limited.get(k, 0) > _RATE_LIMIT_TTL:
+            return True
+    return False
+
+
+def get_next_valid_key():
+    """
+    Return the first non-rate-limited key, or None if all are exhausted.
+    Does NOT advance the round-robin index — use this for single-key selection.
+    """
+    now  = time.time()
+    keys = get_all_keys()
+    for k in keys:
+        if now - _rate_limited.get(k, 0) > _RATE_LIMIT_TTL:
+            return k
+    return None
 
