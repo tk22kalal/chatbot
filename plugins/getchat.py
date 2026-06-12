@@ -65,7 +65,16 @@ async def get_chat_command(client: Bot, message: Message):
     else:
         for msg in messages:
             sender_id = msg.get('sender_id')
-            timestamp = msg.get('timestamp', datetime.now())
+            raw_ts    = msg.get('timestamp', None)
+            if raw_ts is None:
+                timestamp = datetime.now()
+            elif isinstance(raw_ts, datetime):
+                timestamp = raw_ts
+            else:
+                try:
+                    timestamp = datetime.fromisoformat(str(raw_ts))
+                except Exception:
+                    timestamp = datetime.now()
             text      = msg.get('text', '[Message]')
             time_str  = timestamp.strftime('%I:%M %p')
 
