@@ -29,9 +29,16 @@ _index: int = 0
 _lock = asyncio.Lock()
 _refresh_interval = 300  # re-fetch from Supabase every 5 minutes
 
-# Rate-limit tracking: key -> unix timestamp when it was rate-limited
+# Rate-limit tracking: key -> (timestamp, ttl_seconds)
+# Per-minute limit:  ~65 s cooldown
+# Daily quota limit: ~24 h cooldown
 _rate_limited: dict = {}
-_RATE_LIMIT_TTL = 62  # seconds before a rate-limited key is considered usable again
+_TTL_MINUTE = 65
+_TTL_DAILY  = 86400
+
+# Used by probe_valid_key to make a minimal test call
+_GROQ_PROBE_URL   = "https://api.groq.com/openai/v1/chat/completions"
+_GROQ_PROBE_MODEL = "llama-3.1-8b-instant"
 
 
 async def _fetch_keys_from_supabase() -> list[str]:
@@ -115,31 +122,73 @@ def get_all_keys() -> list:
     return result
 
 
-def mark_key_rate_limited(key: str) -> None:
-    """Record that this key just received a 429. It will be skipped for _RATE_LIMIT_TTL seconds."""
-    _rate_limited[key] = time.time()
-    print(f"[supabase_keys] Key rate-limited, marked for {_RATE_LIMIT_TTL}s cooldown.")
+def mark_key_rate_limited(key: str, daily: bool = False) -> None:
+    """
+    Record that this key just hit a 429.
+    daily=True  → 24-hour cooldown (daily quota exhausted)
+    daily=False → 65-second cooldown (per-minute rate limit)
+    """
+    ttl = _TTL_DAILY if daily else _TTL_MINUTE
+    _rate_limited[key] = (time.time(), ttl)
+    kind = "daily quota" if daily else "per-minute"
+    print(f"[supabase_keys] Key marked {kind} rate-limited ({ttl}s cooldown).")
+
+
+def _is_key_available(key: str) -> bool:
+    """Return True if this key is not currently in its cooldown window."""
+    entry = _rate_limited.get(key)
+    if entry is None:
+        return True
+    ts, ttl = entry
+    return (time.time() - ts) > ttl
 
 
 def has_valid_key() -> bool:
-    """Return True if at least one key is not currently rate-limited."""
-    now  = time.time()
+    """Quick in-memory check: True if at least one key is not in cooldown."""
+    return any(_is_key_available(k) for k in get_all_keys())
+
+
+async def probe_valid_key() -> bool:
+    """
+    Actually test every non-cooled-down key with a minimal real API call.
+    Returns True the moment any key responds 200.
+    Keys that return 429 are marked with the appropriate TTL.
+    This is the authoritative check used before starting an AI girl session.
+    """
     keys = get_all_keys()
-    for k in keys:
-        if now - _rate_limited.get(k, 0) > _RATE_LIMIT_TTL:
-            return True
+    if not keys:
+        return False
+
+    for key in keys:
+        if not _is_key_available(key):
+            continue
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    _GROQ_PROBE_URL,
+                    headers={
+                        "Authorization": f"Bearer {key}",
+                        "Content-Type":  "application/json",
+                    },
+                    json={
+                        "model":      _GROQ_PROBE_MODEL,
+                        "messages":   [{"role": "user", "content": "hi"}],
+                        "max_tokens": 1,
+                    },
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        print(f"[supabase_keys] Probe OK — valid key found.")
+                        return True
+                    elif resp.status == 429:
+                        body = await resp.text()
+                        is_daily = any(w in body.lower() for w in ("daily", "quota", "exceeded", "24"))
+                        mark_key_rate_limited(key, daily=is_daily)
+                    else:
+                        print(f"[supabase_keys] Probe got {resp.status}, skipping key.")
+        except Exception as e:
+            print(f"[supabase_keys] probe error: {e}")
+
+    print("[supabase_keys] Probe: all keys exhausted.")
     return False
-
-
-def get_next_valid_key():
-    """
-    Return the first non-rate-limited key, or None if all are exhausted.
-    Does NOT advance the round-robin index — use this for single-key selection.
-    """
-    now  = time.time()
-    keys = get_all_keys()
-    for k in keys:
-        if now - _rate_limited.get(k, 0) > _RATE_LIMIT_TTL:
-            return k
-    return None
 
