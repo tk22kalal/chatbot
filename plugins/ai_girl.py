@@ -20,7 +20,7 @@ _IMG_FALLBACKS = ["umm", "waoo", "nice", "omg", "ohh", "yeah", "like it"]
 # ──────────────────────────────────────────────────────────────────[...]
 # Groq API key rotation — keys fetched from Supabase in round-robin order
 # ──────────────────────────────────────────────────────────────────[...]
-from supabase_keys import get_all_keys as _get_all_groq_keys
+from supabase_keys import get_all_keys as _get_all_groq_keys, mark_key_rate_limited as _mark_rate_limited
 
 
 # ──────────────────────────────────────────────────────────────────[...]
@@ -173,6 +173,7 @@ async def _call_groq_text(messages: list):
                         return reply if reply else "hmm"
                     elif resp.status == 429:
                         print(f"[ai_girl] Key rate-limited (429), trying next key...")
+                        _mark_rate_limited(groq_key)
                         continue
                     else:
                         err = await resp.text()
@@ -219,7 +220,6 @@ async def handle_ai_message(
     get_ai_history_fn,
     set_ai_history_fn,
     increment_msg_fn,
-    on_keys_exhausted=None,   # async callable(client, user_id) — called when all Groq keys rate-limited
 ):
     # Lazy import avoids circular dependency at module load time
     from database.database import (
@@ -271,11 +271,12 @@ async def handle_ai_message(
         msgs     = [{"role": "system", "content": system_prompt}] + trimmed
         reply    = await _call_groq_text(msgs)
 
-        # ── All Groq keys exhausted — end AI session, back to searching ───────
+        # ── All Groq keys exhausted — silently do nothing, preserve session ──
         if reply is None:
-            clear_session_cache(user_id)
-            if on_keys_exhausted:
-                await on_keys_exhausted(client, user_id)
+            # Pop the user message we just appended so it can be retried later
+            if history and history[-1].get("role") == "user":
+                history.pop()
+            await set_ai_history_fn(user_id, history)
             return
 
         history.append({"role": "assistant", "content": reply})
