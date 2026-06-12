@@ -20,7 +20,7 @@ _IMG_FALLBACKS = ["umm", "waoo", "nice", "omg", "ohh", "yeah", "like it"]
 # ──────────────────────────────────────────────────────────────────[...]
 # Groq API key rotation — keys fetched from Supabase in round-robin order
 # ──────────────────────────────────────────────────────────────────[...]
-from supabase_keys import get_all_keys as _get_all_groq_keys, mark_key_rate_limited as _mark_rate_limited
+from supabase_keys import get_all_keys as _get_all_groq_keys, mark_key_rate_limited as _mark_key_rate_limited
 
 
 # ──────────────────────────────────────────────────────────────────[...]
@@ -172,8 +172,10 @@ async def _call_groq_text(messages: list):
                         reply = data["choices"][0]["message"]["content"].strip()
                         return reply if reply else "hmm"
                     elif resp.status == 429:
-                        print(f"[ai_girl] Key rate-limited (429), trying next key...")
-                        _mark_rate_limited(groq_key)
+                        body = await resp.text()
+                        is_daily = any(w in body.lower() for w in ("daily", "quota", "exceeded", "24"))
+                        print(f"[ai_girl] Key 429 ({'daily' if is_daily else 'per-minute'}), trying next...")
+                        _mark_key_rate_limited(groq_key, daily=is_daily)
                         continue
                     else:
                         err = await resp.text()
