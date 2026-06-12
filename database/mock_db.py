@@ -41,44 +41,43 @@ class MockCollection:
         self.parent_db.save()
         return None
     
+    def _doc_matches(self, doc, query):
+        """Return True if doc matches a MongoDB-style query dict."""
+        for key, value in query.items():
+            if key == '$or':
+                if not any(self._doc_matches(doc, branch) for branch in value):
+                    return False
+            elif key == '$and':
+                if not all(self._doc_matches(doc, branch) for branch in value):
+                    return False
+            elif isinstance(value, dict):
+                if not self._field_matches(doc.get(key), value):
+                    return False
+            else:
+                if doc.get(key) != value:
+                    return False
+        return True
+
     def find_one(self, query):
         if not query:
             return None
-        
+
         _id = query.get('_id')
-        if _id and _id in self.data:
-            return self.data[_id]
-        
+        if _id is not None and '$or' not in query and '$and' not in query:
+            if _id in self.data:
+                return self.data[_id]
+
         for doc in self.data.values():
-            match = True
-            for key, value in query.items():
-                if key == '$or':
-                    continue
-                if doc.get(key) != value:
-                    match = False
-                    break
-            if match:
+            if self._doc_matches(doc, query):
                 return doc
         return None
-    
+
     def find(self, query=None):
         if query is None:
             query = {}
         results = []
         for doc in self.data.values():
-            match = True
-            for key, value in query.items():
-                if key.startswith('$'):
-                    continue
-                # Support {field: {'$in': [...]}} operator
-                if isinstance(value, dict) and '$in' in value:
-                    if doc.get(key) not in value['$in']:
-                        match = False
-                        break
-                elif doc.get(key) != value:
-                    match = False
-                    break
-            if match:
+            if self._doc_matches(doc, query):
                 results.append(doc)
         return MockCursor(results)
     
