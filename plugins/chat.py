@@ -49,26 +49,6 @@ def _search_keyboard(webapp_url: str | None) -> ReplyKeyboardMarkup:
 
 # ── AI Girl connector ─────────────────────────────────────────────────────────
 
-async def _on_ai_keys_exhausted(client: Bot, user_id: int) -> None:
-    """
-    Called when all Groq API keys are rate-limited mid-AI-chat.
-    End the AI session and put the user back into searching state so they
-    keep seeing 'Looking for partner...' until a real user or a recovered
-    key becomes available.
-    """
-    from database.database import clear_user_ai_partner, set_user_searching
-    await clear_user_ai_partner(user_id)
-    await set_user_searching(user_id, True)
-    webapp_url = _get_webapp_url()
-    await client.send_message(
-        user_id,
-        SEARCHING_MSG,
-        reply_markup=_search_keyboard(webapp_url)
-    )
-    # Retry AI fallback after 30 s in case a key frees up
-    asyncio.ensure_future(_delayed_ai_fallback(client, user_id, delay=30))
-
-
 async def _start_ai_chat(client: Bot, user_id: int) -> None:
     """Silently connect user to AI girl — feels identical to a real match."""
     # Create a chat log entry — same token system as real chats → /getchat TOKEN works
@@ -135,31 +115,47 @@ async def try_match_users(client: Bot, user_id: int, user: dict) -> bool:
 
 async def _delayed_ai_fallback(client: Bot, user_id: int, delay: int = 10) -> None:
     """
-    Wait `delay` seconds for a real partner.
-    If the user is still searching after that AND:
-      - they have ≥ AI_GIRL_SKIP_THRESHOLD consecutive short-chat skips, OR
-      - nobody else is online at all
-    → silently connect them to AI girl.
-    If a real user matched them during the wait, do nothing.
+    Wait `delay` seconds for a real partner, then decide:
+      - real user found            → do nothing (they're already matched)
+      - should try AI + valid key  → start AI girl chat
+      - should try AI + NO key     → keep looping every 10 s until a key or real user appears
+    The user stays in 'searching' state the whole time so they see
+    'Looking for a partner...' with no partner-found message until
+    both conditions (AI criteria + valid key) are met.
     """
+    from supabase_keys import has_valid_key
+
     await asyncio.sleep(delay)
 
-    user = await get_user(user_id)
-    if not user:
-        return
-    # Already matched with a real user or stopped searching — nothing to do
-    if not user.get('searching') or user.get('partner_id'):
-        return
+    while True:
+        user = await get_user(user_id)
+        if not user:
+            return
+        # Already matched with a real user or stopped searching — done
+        if not user.get('searching') or user.get('partner_id'):
+            return
 
-    skip_count      = await get_skip_count(user_id)
-    searching_users = await get_searching_users()
-    available_users = [u for u in searching_users if u['_id'] != user_id]
-    nobody_online   = len(available_users) == 0
+        skip_count      = await get_skip_count(user_id)
+        searching_users = await get_searching_users()
+        available_users = [u for u in searching_users if u['_id'] != user_id]
+        nobody_online   = len(available_users) == 0
 
-    if nobody_online or skip_count >= AI_GIRL_SKIP_THRESHOLD:
-        await set_user_searching(user_id, False)
-        await reset_skip_count(user_id)
-        await _start_ai_chat(client, user_id)
+        should_try_ai = nobody_online or skip_count >= AI_GIRL_SKIP_THRESHOLD
+
+        if not should_try_ai:
+            # Real users are available — let natural matching take over
+            return
+
+        if has_valid_key():
+            # Good key available — start AI girl chat now
+            await set_user_searching(user_id, False)
+            await reset_skip_count(user_id)
+            await _start_ai_chat(client, user_id)
+            return
+
+        # No valid key yet — stay in 'searching' state and retry in 10 s
+        print(f"[fallback] No valid Groq key for user {user_id}, retrying in 10s...")
+        await asyncio.sleep(10)
 
 
 # ── /search ───────────────────────────────────────────────────────────────────
@@ -318,10 +314,9 @@ async def handle_messages(client: Bot, message: Message):
         asyncio.ensure_future(
             handle_ai_message(
                 client, message, user_id,
-                get_ai_history_fn   = get_ai_history,
-                set_ai_history_fn   = set_ai_history,
-                increment_msg_fn    = increment_user_msg_count,
-                on_keys_exhausted   = _on_ai_keys_exhausted,
+                get_ai_history_fn = get_ai_history,
+                set_ai_history_fn = set_ai_history,
+                increment_msg_fn  = increment_user_msg_count,
             )
         )
         return
