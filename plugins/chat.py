@@ -49,6 +49,26 @@ def _search_keyboard(webapp_url: str | None) -> ReplyKeyboardMarkup:
 
 # ── AI Girl connector ─────────────────────────────────────────────────────────
 
+async def _on_ai_keys_exhausted(client: Bot, user_id: int) -> None:
+    """
+    Called when all Groq API keys are rate-limited mid-AI-chat.
+    End the AI session and put the user back into searching state so they
+    keep seeing 'Looking for partner...' until a real user or a recovered
+    key becomes available.
+    """
+    from database.database import clear_user_ai_partner, set_user_searching
+    await clear_user_ai_partner(user_id)
+    await set_user_searching(user_id, True)
+    webapp_url = _get_webapp_url()
+    await client.send_message(
+        user_id,
+        SEARCHING_MSG,
+        reply_markup=_search_keyboard(webapp_url)
+    )
+    # Retry AI fallback after 30 s in case a key frees up
+    asyncio.ensure_future(_delayed_ai_fallback(client, user_id, delay=30))
+
+
 async def _start_ai_chat(client: Bot, user_id: int) -> None:
     """Silently connect user to AI girl — feels identical to a real match."""
     # Create a chat log entry — same token system as real chats → /getchat TOKEN works
@@ -113,16 +133,16 @@ async def try_match_users(client: Bot, user_id: int, user: dict) -> bool:
 
 # ── 10-second AI girl fallback ────────────────────────────────────────────────
 
-async def _delayed_ai_fallback(client: Bot, user_id: int) -> None:
+async def _delayed_ai_fallback(client: Bot, user_id: int, delay: int = 10) -> None:
     """
-    Wait 10 seconds for a real partner.
+    Wait `delay` seconds for a real partner.
     If the user is still searching after that AND:
       - they have ≥ AI_GIRL_SKIP_THRESHOLD consecutive short-chat skips, OR
       - nobody else is online at all
     → silently connect them to AI girl.
     If a real user matched them during the wait, do nothing.
     """
-    await asyncio.sleep(10)
+    await asyncio.sleep(delay)
 
     user = await get_user(user_id)
     if not user:
@@ -301,6 +321,7 @@ async def handle_messages(client: Bot, message: Message):
                 get_ai_history_fn   = get_ai_history,
                 set_ai_history_fn   = set_ai_history,
                 increment_msg_fn    = increment_user_msg_count,
+                on_keys_exhausted   = _on_ai_keys_exhausted,
             )
         )
         return
